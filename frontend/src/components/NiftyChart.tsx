@@ -21,7 +21,7 @@ import {
   type HistogramData,
 } from 'lightweight-charts';
 import { TrendingUp, Minus, Trash2 } from 'lucide-react';
-import { formatPrice } from '@/lib/formatters';
+import { formatPrice } from '../lib/formatters';
 import type { NiftyPrice, OptionChain } from '@/types';
 
 /* ─── indicator meta ─────────────────────────────────────────────── */
