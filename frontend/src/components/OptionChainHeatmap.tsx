@@ -11,7 +11,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { formatOI, formatPrice, getOIHeatColor, getColorClass } from '@/lib/formatters';
+import { formatOI, formatPrice, getOIHeatColor, getColorClass } from '../lib/formatters';
 import type { OptionChain, StrikeData } from '@/types';
 import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
 

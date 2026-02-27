@@ -5,7 +5,7 @@
 
 'use client';
 
-import { getSignalClass, formatTime } from '@/lib/formatters';
+import { getSignalClass, formatTime } from '../lib/formatters';
 import type { TradingSignal, MarketSentiment } from '@/types';
 import { AlertTriangle, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react';
 import clsx from 'clsx';

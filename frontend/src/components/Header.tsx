@@ -5,7 +5,7 @@
 
 'use client';
 
-import { formatPrice, formatChange, formatChangePct, getColorClass, formatTime } from '@/lib/formatters';
+import { formatPrice, formatChange, formatChangePct, getColorClass, formatTime } from '../lib/formatters';
 import type { NiftyPrice, GiftNifty } from '@/types';
 import { TrendingUp, TrendingDown, Minus, Wifi, WifiOff, Activity } from 'lucide-react';
 

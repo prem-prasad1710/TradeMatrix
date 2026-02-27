@@ -5,7 +5,7 @@
 
 'use client';
 
-import { formatPrice } from '@/lib/formatters';
+import { formatPrice } from '../lib/formatters';
 import type { NiftyPrice, OptionChain } from '@/types';
 import { Layers } from 'lucide-react';
 

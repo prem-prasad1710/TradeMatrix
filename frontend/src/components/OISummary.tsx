@@ -5,7 +5,7 @@
 
 'use client';
 
-import { formatOI, formatPrice, getPCRLabel } from '@/lib/formatters';
+import { formatOI, formatPrice, getPCRLabel } from '../lib/formatters';
 import type { OptionChain } from '@/types';
 import { Shield, TrendingDown, TrendingUp, Target } from 'lucide-react';
 

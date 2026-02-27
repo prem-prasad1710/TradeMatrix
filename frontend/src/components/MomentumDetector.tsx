@@ -6,7 +6,7 @@
 
 'use client';
 
-import { formatOI, formatPrice, BUILDUP_CONFIG } from '@/lib/formatters';
+import { formatOI, formatPrice, BUILDUP_CONFIG } from '../lib/formatters';
 import type { OptionChain } from '@/types';
 import { Activity, ArrowUp, ArrowDown } from 'lucide-react';
 import clsx from 'clsx';
