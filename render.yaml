@@ -5,10 +5,11 @@ services:
     region: singapore  # Closest to India for low latency
     plan: free
     rootDir: backend
-    # Rebuild native module (better-sqlite3) for Linux after npm install
-    buildCommand: npm install && npm rebuild better-sqlite3
+    buildCommand: npm install
     startCommand: node server.js
     envVars:
+      - key: NODE_VERSION
+        value: 20            # Pin to Node 20 LTS — better-sqlite3 has prebuilt binaries for 20
       - key: NODE_ENV
         value: production
       - key: PORT
