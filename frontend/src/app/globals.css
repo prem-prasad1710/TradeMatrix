@@ -1,0 +1,203 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base Dark Theme ────────────────────────────────────────────────────────── */
+:root {
+  --bg: #0a0e1a;
+  --surface: #0f1629;
+  --card: #131d33;
+  --border: #1e2d4a;
+  --bullish: #00d264;
+  --bearish: #ff3d5a;
+  --neutral: #f0a500;
+  --accent: #3b82f6;
+  --text-primary: #e0e6f0;
+  --text-secondary: #7a8fb0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-primary);
+  overflow-x: hidden;
+}
+
+/* ── Trading Card ───────────────────────────────────────────────────────────── */
+@layer components {
+  .trading-card {
+    @apply bg-card border border-border rounded-xl p-4 shadow-card;
+  }
+
+  .trading-card-header {
+    @apply text-text-secondary text-xs font-medium uppercase tracking-wider mb-3 flex items-center gap-2;
+  }
+
+  /* Price display */
+  .price-display {
+    @apply font-mono text-text-primary font-semibold;
+  }
+
+  .price-up { @apply text-bullish; }
+  .price-down { @apply text-bearish; }
+  .price-neutral { @apply text-neutral; }
+
+  /* Signal badges */
+  .signal-bullish {
+    @apply bg-bullish/10 border border-bullish/30 text-bullish px-2 py-1 rounded-md text-xs font-medium;
+  }
+  .signal-bearish {
+    @apply bg-bearish/10 border border-bearish/30 text-bearish px-2 py-1 rounded-md text-xs font-medium;
+  }
+  .signal-neutral {
+    @apply bg-neutral/10 border border-neutral/30 text-neutral px-2 py-1 rounded-md text-xs font-medium;
+  }
+  .signal-warning {
+    @apply bg-warning/10 border border-warning/30 text-warning px-2 py-1 rounded-md text-xs font-medium;
+  }
+
+  /* OI heatmap cells */
+  .oi-cell-call {
+    background: linear-gradient(90deg, transparent, rgba(255, 61, 90, 0.15));
+  }
+  .oi-cell-put {
+    background: linear-gradient(90deg, rgba(0, 210, 100, 0.15), transparent);
+  }
+  .oi-cell-atm {
+    @apply border-l-2 border-r-2 border-accent/50 bg-accent/5;
+  }
+
+  /* Pulse dot for live indicator */
+  .live-dot {
+    @apply w-2 h-2 rounded-full bg-bullish animate-pulse;
+  }
+
+  /* Number formatting */
+  .num-positive { @apply text-bullish font-mono; }
+  .num-negative { @apply text-bearish font-mono; }
+  .num-neutral  { @apply text-text-primary font-mono; }
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px 1px rgba(0, 210, 100, 0.15); }
+  50%       { box-shadow: 0 0 14px 3px rgba(0, 210, 100, 0.35); }
+}
+@keyframes glow-pulse-red {
+  0%, 100% { box-shadow: 0 0 6px 1px rgba(255, 61, 90, 0.15); }
+  50%       { box-shadow: 0 0 14px 3px rgba(255, 61, 90, 0.35); }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes scan-line {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 0% 100%; }
+}
+
+.ticker-text {
+  animation: ticker-scroll 30s linear infinite;
+}
+.animate-slide-in   { animation: slide-in-right 0.3s ease both; }
+.animate-fade-in    { animation: fade-in 0.25s ease both; }
+.glow-bull          { animation: glow-pulse 2s ease-in-out infinite; }
+.glow-bear          { animation: glow-pulse-red 2s ease-in-out infinite; }
+
+/* ── Pro card hover ────────────────────────────────────────────────────────── */
+.trading-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.trading-card:hover {
+  border-color: rgba(59, 130, 246, 0.18);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.06), 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Signal card glow ──────────────────────────────────────────────────────── */
+.signal-bullish-card {
+  border-color: rgba(0, 210, 100, 0.25) !important;
+  box-shadow: 0 0 20px rgba(0, 210, 100, 0.06), inset 0 1px 0 rgba(0, 210, 100, 0.05);
+}
+.signal-bearish-card {
+  border-color: rgba(255, 61, 90, 0.25) !important;
+  box-shadow: 0 0 20px rgba(255, 61, 90, 0.06), inset 0 1px 0 rgba(255, 61, 90, 0.05);
+}
+
+/* ── Scrollbar (premium) ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #1e2d4a, #0f1629);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: #2a4070; }
+
+/* ── Chart overrides ────────────────────────────────────────────────────────── */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #0b1325 !important;
+  border: 1px solid #1e2d4a !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+
+/* ── Table ──────────────────────────────────────────────────────────────────── */
+.data-table {
+  @apply w-full text-xs;
+}
+.data-table th {
+  @apply text-text-secondary font-medium uppercase tracking-wider py-2 px-3 text-right first:text-left;
+}
+.data-table td {
+  @apply py-1.5 px-3 text-right first:text-left font-mono;
+  transition: background 0.15s ease;
+}
+.data-table tr:hover td  { background: rgba(30, 45, 74, 0.5); }
+.data-table tr.atm-row   { @apply bg-accent/5 border-y border-accent/20; }
+.data-table tr.atm-row td { font-weight: 600; }
+
+/* ── Number badges ─────────────────────────────────────────────────────────── */
+.badge-buy {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: linear-gradient(135deg, rgba(0,210,100,0.15), rgba(0,160,76,0.1));
+  border: 1px solid rgba(0,210,100,0.35);
+  color: #00d264; padding: 2px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  box-shadow: 0 0 10px rgba(0,210,100,0.12);
+}
+.badge-sell {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: linear-gradient(135deg, rgba(255,61,90,0.15), rgba(200,30,60,0.1));
+  border: 1px solid rgba(255,61,90,0.35);
+  color: #ff3d5a; padding: 2px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  box-shadow: 0 0 10px rgba(255,61,90,0.12);
+}
+.badge-wait {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(240,165,0,0.1);
+  border: 1px solid rgba(240,165,0,0.3);
+  color: #f0a500; padding: 2px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+}
+
+/* ── Focus ring fix ────────────────────────────────────────────────────────── */
+button:focus-visible { outline: 2px solid rgba(59, 130, 246, 0.5); outline-offset: 2px; }
+
+/* ── Glassmorphism header ──────────────────────────────────────────────────── */
+.glass-header {
+  background: rgba(8, 13, 26, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(30, 45, 74, 0.8);
+}

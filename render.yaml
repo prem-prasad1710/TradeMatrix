@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: nifty-dashboard-backend
+    env: node
+    region: singapore  # Closest to India for low latency
+    plan: free
+    rootDir: backend
+    # Rebuild native module (better-sqlite3) for Linux after npm install
+    buildCommand: npm install && npm rebuild better-sqlite3
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000         # Render routes external traffic → 10000 by default
+      - key: FRONTEND_URL
+        sync: false          # Set this in Render dashboard after Vercel URL is known
+      - key: DB_PATH
+        value: ./data/nifty.db
+    healthCheckPath: /health
+    autoDeploy: true
