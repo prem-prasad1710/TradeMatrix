@@ -22,12 +22,12 @@ import Header from '../components/Header';
 import NiftyChart from '../components/NiftyChart';
 import OISummary from '../components/OISummary';
 import OptionChainHeatmap from '../components/OptionChainHeatmap';
-import SignalsPanel from '@/components/SignalsPanel';
-import MomentumDetector from '@/components/MomentumDetector';
-import SupportResistancePanel from '@/components/SupportResistancePanel';
-import PriceOIAnalysis from '@/components/PriceOIAnalysis';
-import TradeRecommendation from '@/components/TradeRecommendation';
-import { getMarketSentiment } from '@/lib/marketUtils';
+import SignalsPanel from '../components/SignalsPanel';
+import MomentumDetector from '../components/MomentumDetector';
+import SupportResistancePanel from '../components/SupportResistancePanel';
+import PriceOIAnalysis from '../components/PriceOIAnalysis';
+import TradeRecommendation from '../components/TradeRecommendation';
+import { getMarketSentiment } from '../lib/marketUtils';
 
 export default function DashboardPage() {
   const {
