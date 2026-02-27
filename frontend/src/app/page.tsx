@@ -17,11 +17,11 @@
 
 'use client';
 
-import { useMarketData } from '@/hooks/useMarketData';
-import Header from '@/components/Header';
-import NiftyChart from '@/components/NiftyChart';
-import OISummary from '@/components/OISummary';
-import OptionChainHeatmap from '@/components/OptionChainHeatmap';
+import { useMarketData } from '../hooks/useMarketData';
+import Header from '../components/Header';
+import NiftyChart from '../components/NiftyChart';
+import OISummary from '../components/OISummary';
+import OptionChainHeatmap from '../components/OptionChainHeatmap';
 import SignalsPanel from '@/components/SignalsPanel';
 import MomentumDetector from '@/components/MomentumDetector';
 import SupportResistancePanel from '@/components/SupportResistancePanel';
