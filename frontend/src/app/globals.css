@@ -143,6 +143,9 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: #2a4070; }
 
+/* Utility alias used by AI chat panel */
+.custom-scrollbar { scrollbar-width: thin; scrollbar-color: #1e2d4a transparent; }
+
 /* ── Chart overrides ────────────────────────────────────────────────────────── */
 .recharts-tooltip-wrapper .recharts-default-tooltip {
   background-color: #0b1325 !important;

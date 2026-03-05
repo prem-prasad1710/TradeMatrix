@@ -19,6 +19,7 @@ const { initDatabase } = require('./services/database');
 const optionChainRoutes = require('./routes/optionChain');
 const marketDataRoutes = require('./routes/marketData');
 const signalsRoutes = require('./routes/signals');
+const aiAnalysisRoutes = require('./routes/aiAnalysis');
 
 const app = express();
 const server = http.createServer(app);
@@ -49,6 +50,7 @@ app.use('/api', limiter);
 app.use('/api/option-chain', optionChainRoutes);
 app.use('/api/market', marketDataRoutes);
 app.use('/api/signals', signalsRoutes);
+app.use('/api/ai', aiAnalysisRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -82,12 +84,23 @@ async function bootstrap() {
     console.log('[FETCHER] Data fetcher started');
 
     // Start HTTP server
+    // Log Ollama status
+    const { isOllamaRunning, listModels } = require('./services/ollamaService');
+    const ollamaUp = await isOllamaRunning();
+    if (ollamaUp) {
+      const models = await listModels();
+      console.log(`[OLLAMA] Running ✓  Available models: ${models.join(', ') || 'none — run: ollama pull mistral'}`);
+    } else {
+      console.log('[OLLAMA] Not running — AI analysis disabled. Start with: ollama serve');
+    }
+
     server.listen(PORT, () => {
       console.log(`
 ╔══════════════════════════════════════╗
 ║  Nifty Options Intelligence Backend  ║
 ║  http://localhost:${PORT}               ║
 ║  WebSocket: ws://localhost:${PORT}      ║
+║  AI (Ollama): ${ollamaUp ? '✓ Active           ' : '✗ Offline          '} ║
 ╚══════════════════════════════════════╝
       `);
     });

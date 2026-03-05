@@ -73,6 +73,19 @@ export interface StrikeData {
   atm: boolean;
 }
 
+export interface OIWallLevel {
+  strike: number;
+  oi: number;
+  oiChange: number;
+  iv: number;
+  type: 'CALL_WALL' | 'PUT_WALL';
+}
+
+export interface OIGainerLevel {
+  strike: number;
+  oiChange: number;
+}
+
 export interface OptionChain {
   underlyingValue: number;
   expiryDate: string;
@@ -94,6 +107,29 @@ export interface OptionChain {
   callOIHeat: StrikeData[];
   putOIHeat: StrikeData[];
   atmStrike: number;
+  // Extended metrics
+  atmIV?: number;
+  atmCeIV?: number;
+  atmPeIV?: number;
+  atmCeLtp?: number;
+  atmPeLtp?: number;
+  straddlePrice?: number;
+  ivSkew?: number;
+  ivSkewLabel?: string;
+  totalCallOIChange?: number;
+  totalPutOIChange?: number;
+  totalOIChange?: number;
+  top5CallWalls?: OIWallLevel[];
+  top5PutWalls?: OIWallLevel[];
+  topCallOIGainer?: OIGainerLevel | null;
+  topPutOIGainer?: OIGainerLevel | null;
+  topCallOILoser?: OIGainerLevel | null;
+  topPutOILoser?: OIGainerLevel | null;
+  bullishStrikes?: number;
+  bearishStrikes?: number;
+  marketBreadth?: number;
+  distToCallWall?: number | null;
+  distToPutWall?: number | null;
 }
 
 export type PCRSentiment =
@@ -118,7 +154,22 @@ export type SignalType =
   | 'LONG_BUILDUP'
   | 'RANGE_MARKET'
   | 'EXTREME_PCR_BULLISH'
-  | 'EXTREME_PCR_BEARISH';
+  | 'EXTREME_PCR_BEARISH'
+  // Technical indicator signals
+  | 'RSI_BULLISH'
+  | 'RSI_BEARISH'
+  | 'RSI_OVERBOUGHT'
+  | 'RSI_OVERSOLD'
+  | 'EMA_BULL_STACK'
+  | 'EMA_BEAR_STACK'
+  | 'EMA_BULLISH_CROSS'
+  | 'EMA_BEARISH_CROSS'
+  | 'MACD_GOLDEN_CROSS'
+  | 'MACD_DEATH_CROSS'
+  | 'MACD_BULLISH_MOMENTUM'
+  | 'MACD_BEARISH_MOMENTUM'
+  | 'BB_SQUEEZE'
+  | string; // candlestick patterns are CANDLE_<pattern>
 
 export type SignalIndicator = 'bullish' | 'bearish' | 'neutral' | 'warning';
 
@@ -193,6 +244,57 @@ export interface TradeSetup {
   patternStreak?: number;     // consecutive cycles showing same pattern
   bullScore?: number;
   bearScore?: number;
+  technicals?: TradeTechnicals | null;
+}
+
+// ── Technical Indicators ──────────────────────────────────────────────────────
+
+/**
+ * Slimmed technical data passed through to the frontend for display.
+ */
+export interface TradeTechnicals {
+  rsi: number | null;
+  rsiZone: 'OVERBOUGHT' | 'OVERSOLD' | 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'UNKNOWN' | null;
+  emaTrend: 'STRONG_BULLISH' | 'BULLISH' | 'NEUTRAL' | 'BEARISH' | 'STRONG_BEARISH' | null;
+  macdTrend: string | null;
+  bbZone: 'UPPER_BAND' | 'LOWER_BAND' | 'UPPER_HALF' | 'LOWER_HALF' | 'MIDDLE' | null;
+  bbSqueeze: boolean;
+  pattern: string | null;
+  patternEmoji: string | null;
+  patternBias: 'bullish' | 'bearish' | 'neutral' | null;
+  atr: number | null;
+  techBias: 'bullish' | 'bearish' | 'neutral';
+  bullScore: number;
+  bearScore: number;
+}
+
+// ── Ollama AI Analysis ────────────────────────────────────────────────────────
+
+export type AIChatRole = 'user' | 'assistant';
+
+export interface AIChatMessage {
+  role: AIChatRole;
+  content: string;
+  timestamp?: string;
+  isStreaming?: boolean;
+}
+
+export interface AIAnalysisResult {
+  analysis: string;
+  model: string;
+  generatedAt: string;
+  stats?: {
+    promptTokens?: number;
+    responseTokens?: number;
+    durationMs?: number | null;
+  };
+}
+
+export interface OllamaStatus {
+  ollamaRunning: boolean;
+  models: string[];
+  defaultModel: string;
+  endpoint: string;
 }
 
 export interface MarketUpdate {

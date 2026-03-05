@@ -169,6 +169,116 @@ function computeOIAnalysis(parsed, currentPrice) {
     callOIHeat,
     putOIHeat,
     atmStrike: findATMStrike(strikes, price),
+    // ── New enriched metrics ──────────────────────────────────────────────────
+    ...computeExtendedMetrics(strikes, price),
+  };
+}
+
+/**
+ * Compute extended OI and IV metrics for richer dashboard display.
+ */
+function computeExtendedMetrics(strikes, price) {
+  if (!strikes || strikes.length === 0) return {};
+
+  const atmStrike = findATMStrike(strikes, price);
+  const atmData   = strikes.find(s => s.strikePrice === atmStrike);
+
+  // ── ATM metrics ────────────────────────────────────────────────────────────
+  const atmCeIV  = atmData?.call.iv   || 0;
+  const atmPeIV  = atmData?.put.iv    || 0;
+  const atmIV    = atmCeIV > 0 && atmPeIV > 0 ? parseFloat(((atmCeIV + atmPeIV) / 2).toFixed(2)) : (atmCeIV || atmPeIV);
+  const atmCeLtp = atmData?.call.ltp  || 0;
+  const atmPeLtp = atmData?.put.ltp   || 0;
+  // Straddle = ATM CE + ATM PE premium = expected ±move for this expiry
+  const straddlePrice = parseFloat((atmCeLtp + atmPeLtp).toFixed(2));
+
+  // ── IV Skew (Put IV - Call IV averaged across nearest OTM strikes) ─────────
+  // Positive skew = puts more expensive than calls = fear / downside hedging
+  const otmRange    = 3; // look at 3 strikes OTM on each side
+  const otmCalls    = strikes.filter(s => s.strikePrice > atmStrike).slice(0, otmRange);
+  const otmPuts     = strikes.filter(s => s.strikePrice < atmStrike).reverse().slice(0, otmRange);
+  const avgCallIV   = otmCalls.length ? otmCalls.reduce((a, s) => a + s.call.iv, 0) / otmCalls.length : atmCeIV;
+  const avgPutIV    = otmPuts.length  ? otmPuts.reduce((a, s)  => a + s.put.iv,  0) / otmPuts.length  : atmPeIV;
+  const ivSkew      = parseFloat((avgPutIV - avgCallIV).toFixed(2)); // >0 = bearish skew, <0 = bullish skew
+  const ivSkewLabel = ivSkew >  3 ? 'HIGH_PUT_SKEW'    // heavy fear/protection buying
+    : ivSkew >  1 ? 'MILD_PUT_SKEW'
+    : ivSkew < -3 ? 'HIGH_CALL_SKEW'   // complacency / bullish frenzy
+    : ivSkew < -1 ? 'MILD_CALL_SKEW'
+    : 'NEUTRAL_SKEW';
+
+  // ── OI Change totals ───────────────────────────────────────────────────────
+  const totalCallOIChange = strikes.reduce((sum, s) => sum + (s.call.oiChange || 0), 0);
+  const totalPutOIChange  = strikes.reduce((sum, s) => sum + (s.put.oiChange  || 0), 0);
+  const totalOIChange     = totalCallOIChange + totalPutOIChange;
+
+  // ── Top 5 Walls ───────────────────────────────────────────────────────────
+  const top5CallWalls = [...strikes]
+    .filter(s => s.strikePrice >= price)
+    .sort((a, b) => b.call.oi - a.call.oi)
+    .slice(0, 5)
+    .map(s => ({ strike: s.strikePrice, oi: s.call.oi, oiChange: s.call.oiChange, iv: s.call.iv, type: 'CALL_WALL' }));
+
+  const top5PutWalls = [...strikes]
+    .filter(s => s.strikePrice <= price)
+    .sort((a, b) => b.put.oi - a.put.oi)
+    .slice(0, 5)
+    .map(s => ({ strike: s.strikePrice, oi: s.put.oi, oiChange: s.put.oiChange, iv: s.put.iv, type: 'PUT_WALL' }));
+
+  // ── OI Gainers & Losers (where smart money moved THIS cycle) ─────────────
+  // Most call OI added above price = new resistance being built
+  const topCallOIGainer = [...strikes]
+    .filter(s => s.strikePrice >= price && s.call.oiChange > 0)
+    .sort((a, b) => b.call.oiChange - a.call.oiChange)[0] || null;
+
+  // Most put OI added below price = new support being built  
+  const topPutOIGainer = [...strikes]
+    .filter(s => s.strikePrice <= price && s.put.oiChange > 0)
+    .sort((a, b) => b.put.oiChange - a.put.oiChange)[0] || null;
+
+  // Most call OI removed = short covering (bullish)
+  const topCallOILoser = [...strikes]
+    .sort((a, b) => a.call.oiChange - b.call.oiChange)[0] || null;
+
+  // Most put OI removed = long unwinding (bearish)
+  const topPutOILoser = [...strikes]
+    .sort((a, b) => a.put.oiChange - b.put.oiChange)[0] || null;
+
+  // ── Options market breadth ─────────────────────────────────────────────────
+  // How many strikes are bullish built (put OI > call OI at that strike)
+  const bullishStrikes = strikes.filter(s => s.put.oi > s.call.oi).length;
+  const bearishStrikes = strikes.filter(s => s.call.oi > s.put.oi).length;
+  const marketBreadth  = parseFloat(((bullishStrikes / Math.max(strikes.length, 1)) * 100).toFixed(1));
+
+  // ── Distance metrics ──────────────────────────────────────────────────────
+  const topCallWall = top5CallWalls[0];
+  const topPutWall  = top5PutWalls[0];
+  const distToCallWall = topCallWall ? parseFloat((topCallWall.strike - price).toFixed(0)) : null;
+  const distToPutWall  = topPutWall  ? parseFloat((price - topPutWall.strike).toFixed(0)) : null;
+  const distToMaxPain  = null; // computed in main function, not available here without passing it in
+
+  return {
+    atmIV,
+    atmCeIV,
+    atmPeIV,
+    atmCeLtp,
+    atmPeLtp,
+    straddlePrice,
+    ivSkew,
+    ivSkewLabel,
+    totalCallOIChange,
+    totalPutOIChange,
+    totalOIChange,
+    top5CallWalls,
+    top5PutWalls,
+    topCallOIGainer: topCallOIGainer ? { strike: topCallOIGainer.strikePrice, oiChange: topCallOIGainer.call.oiChange } : null,
+    topPutOIGainer:  topPutOIGainer  ? { strike: topPutOIGainer.strikePrice,  oiChange: topPutOIGainer.put.oiChange   } : null,
+    topCallOILoser:  topCallOILoser  ? { strike: topCallOILoser.strikePrice,  oiChange: topCallOILoser.call.oiChange  } : null,
+    topPutOILoser:   topPutOILoser   ? { strike: topPutOILoser.strikePrice,   oiChange: topPutOILoser.put.oiChange    } : null,
+    bullishStrikes,
+    bearishStrikes,
+    marketBreadth,
+    distToCallWall,
+    distToPutWall,
   };
 }
 

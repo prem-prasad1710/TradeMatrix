@@ -27,7 +27,9 @@ import MomentumDetector from '../components/MomentumDetector';
 import SupportResistancePanel from '../components/SupportResistancePanel';
 import PriceOIAnalysis from '../components/PriceOIAnalysis';
 import TradeRecommendation from '../components/TradeRecommendation';
+import TechnicalAnalysisPanel from '../components/TechnicalAnalysisPanel';
 import { getMarketSentiment } from '../lib/marketUtils';
+import AIAnalysis from '../components/AIAnalysis';
 
 export default function DashboardPage() {
   const {
@@ -85,13 +87,16 @@ export default function DashboardPage() {
       {!isLoading && (
         <main className="flex-1 p-3 lg:p-4 space-y-3">
 
-          {/* Row 0: Trade Recommendation + Price vs OI — most important, shown first */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Row 0: Trade Recommendation + Technical Analysis + Price vs OI */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <TradeRecommendation
               tradeSetup={tradeSetup ?? null}
               oiPattern={oiPattern ?? null}
               isMarketOpen={isMarketOpen}
               currentPrice={price?.price ?? null}
+            />
+            <TechnicalAnalysisPanel
+              technicals={tradeSetup?.technicals ?? null}
             />
             <PriceOIAnalysis oiPattern={oiPattern ?? null} />
           </div>
@@ -137,6 +142,20 @@ export default function DashboardPage() {
               priceData={price}
               optionChain={optionChain}
             />
+          </div>
+
+          {/* Row 6: AI Market Analyst (Ollama) */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+            <div className="xl:col-span-2">
+              <AIAnalysis />
+            </div>
+            <div className="flex flex-col gap-3">
+              {/* Placeholder for future AI-powered widget */}
+              <div className="trading-card text-center text-text-muted text-xs py-8 opacity-60">
+                <p className="font-medium">Quick Prompts</p>
+                <p className="mt-2 text-[10px]">Coming soon — one-click analysis templates</p>
+              </div>
+            </div>
           </div>
 
           {/* Footer */}

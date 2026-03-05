@@ -106,7 +106,7 @@ function getOIPattern(currentPrice, currentCallOI, currentPutOI) {
 
 /**
  * Generate a trade recommendation for a ₹10,000 capital intraday trader.
- * Uses: OI pattern + PCR + Price vs VWAP + Support/Resistance
+ * Uses: OI pattern + PCR + Price vs VWAP + Support/Resistance + Technicals
  */
 function getTradeSetup({
   price,
@@ -119,6 +119,7 @@ function getTradeSetup({
   strikes = [],
   capital = 10000,
   pivots,
+  technicals = null,
 }) {
   const LOT_SIZE = 25;
   const ATM = Math.round(price / 50) * 50;
@@ -161,6 +162,47 @@ function getTradeSetup({
   if (pivots?.PP) {
     if (price > pivots.PP)  { bullScore += 1; reasons.push(`Price above Pivot PP ${pivots.PP | 0}`); }
     else                    { bearScore += 1; reasons.push(`Price below Pivot PP ${pivots.PP | 0}`); }
+  }
+
+  // ── Technical Indicators (weight: up to 5) ────────────────────────────────
+  if (technicals) {
+    const { rsi, ema, macd, bb, pattern, atr } = technicals;
+
+    // RSI (weight: 1)
+    if (rsi && rsi.rsi !== null) {
+      if (rsi.rsi >= 55 && rsi.rsi < 75)  { bullScore += 1; reasons.push(`RSI ${rsi.rsi} — bullish momentum zone`); }
+      else if (rsi.rsi <= 45 && rsi.rsi > 25) { bearScore += 1; reasons.push(`RSI ${rsi.rsi} — bearish momentum zone`); }
+      else if (rsi.rsi >= 75)  warnings.push(`RSI ${rsi.rsi} — overbought, CE premium risk`);
+      else if (rsi.rsi <= 25)  warnings.push(`RSI ${rsi.rsi} — oversold, PE premium risk`);
+    }
+
+    // EMA (weight: 2)
+    if (ema) {
+      if (ema.bullStack)  { bullScore += 2; reasons.push(`EMA bullish stack: ${ema.ema9}>${ema.ema21}>${ema.ema50}`); }
+      else if (ema.bearStack) { bearScore += 2; reasons.push(`EMA bearish stack: ${ema.ema9}<${ema.ema21}<${ema.ema50}`); }
+      else if (ema.signal === 'bullish') { bullScore += 1; reasons.push(`EMA9(${ema.ema9}) > EMA21(${ema.ema21}) — bullish cross`); }
+      else if (ema.signal === 'bearish') { bearScore += 1; reasons.push(`EMA9(${ema.ema9}) < EMA21(${ema.ema21}) — bearish cross`); }
+    }
+
+    // MACD (weight: 1-2)
+    if (macd) {
+      if (macd.bullishCross)  { bullScore += 2; reasons.push('MACD golden cross — bullish momentum shift'); }
+      else if (macd.bearishCross) { bearScore += 2; reasons.push('MACD death cross — bearish momentum shift'); }
+      else if (macd.indicator === 'bullish') { bullScore += 1; }
+      else if (macd.indicator === 'bearish') { bearScore += 1; }
+    }
+
+    // Candlestick Pattern (weight: 1)
+    if (pattern) {
+      if (pattern.bias === 'bullish') { bullScore += 1; reasons.push(`${pattern.emoji} ${pattern.pattern} candle — ${pattern.description}`); }
+      else if (pattern.bias === 'bearish') { bearScore += 1; reasons.push(`${pattern.emoji} ${pattern.pattern} candle — ${pattern.description}`); }
+      else if (pattern.pattern === 'DOJI') warnings.push('Doji: indecision — wait for next candle confirmation');
+    }
+
+    // Bollinger Band Squeeze
+    if (bb?.squeeze) {
+      reasons.push(`Bollinger squeeze (${bb.bandwidth.toFixed(1)}% bandwidth) — explosive move imminent`);
+    }
   }
 
   const total = bullScore + bearScore;
@@ -227,6 +269,18 @@ function getTradeSetup({
   if (confidence < 60) warnings.push('Confidence below 60% — consider half position');
   if (oiPattern?.pattern === 'NEUTRAL') warnings.push('OI pattern not confirming — wait for clarity');
 
+  // ATR-based stop loss (more precise than fixed %)
+  let stopLoss_final = stopLoss;
+  let slMethod = 'fixed';
+  if (technicals?.atr && ltp > 0) {
+    const atrSL = Math.round((ltp - technicals.atr * 0.5 * 1.5) * 10) / 10;
+    if (atrSL > 0 && atrSL < ltp * 0.90 && atrSL > ltp * 0.50) {
+      stopLoss_final = atrSL;
+      slMethod = 'ATR';
+      reasons.push(`ATR SL: underlying ATR=${technicals.atr.toFixed(0)}pts → option SL=₹${stopLoss_final}`);
+    }
+  }
+
   // Time-based warnings
   const now = new Date();
   const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
@@ -234,6 +288,11 @@ function getTradeSetup({
   if (hm < 9 * 60 + 30)  warnings.push('Pre-market: wait for 9:30 AM for entry');
   if (hm > 14 * 60 + 45) warnings.push('After 2:45 PM: theta decay accelerates — reduce lots');
   if (hm > 15 * 60)      warnings.push('⚠️ After 3:00 PM — avoid new positions, square off only');
+
+  const riskPerLot2   = (entry - stopLoss_final) * LOT_SIZE;
+  const rewardPerLot2 = (target - entry)          * LOT_SIZE;
+  const rr2 = riskPerLot2 > 0 ? (rewardPerLot2 / riskPerLot2).toFixed(1) : rr;
+  const pnlSL2 = Math.round((entry - stopLoss_final) * LOT_SIZE * lots);
 
   return {
     bias: isBullish ? 'BUY_CE' : 'BUY_PE',
@@ -244,8 +303,8 @@ function getTradeSetup({
     investment: Math.round(investment),
     entry,
     target,
-    stopLoss,
-    rewardRisk: `1:${rr}`,
+    stopLoss: stopLoss_final,
+    rewardRisk: `1:${rr2}`,
     oiPattern: oiPattern?.pattern ?? 'NEUTRAL',
     confidence,
     reasons,
@@ -253,9 +312,25 @@ function getTradeSetup({
     timeframe: '5m',
     capital,
     pnlTarget,
-    pnlSL,
+    pnlSL: pnlSL2,
     bullScore,
     bearScore,
+    // Pass through slimmed technicals for frontend
+    technicals: technicals ? {
+      rsi: technicals.rsi?.rsi ?? null,
+      rsiZone: technicals.rsi?.zone ?? null,
+      emaTrend: technicals.ema?.trend ?? null,
+      macdTrend: technicals.macd?.trend ?? null,
+      bbZone: technicals.bb?.zone ?? null,
+      bbSqueeze: technicals.bb?.squeeze ?? false,
+      pattern: technicals.pattern?.pattern ?? null,
+      patternEmoji: technicals.pattern?.emoji ?? null,
+      patternBias: technicals.pattern?.bias ?? null,
+      atr: technicals.atr,
+      techBias: technicals.techBias,
+      bullScore: technicals.bullScore,
+      bearScore: technicals.bearScore,
+    } : null,
   };
 }
 

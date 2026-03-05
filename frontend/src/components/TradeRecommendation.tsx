@@ -17,7 +17,7 @@
  *  • Multi-timeframe context (5m/15m)
  */
 
-import type { TradeSetup, OIPattern } from '@/types';
+import type { TradeSetup, OIPattern, TradeTechnicals } from '@/types';
 
 interface TradeRecommendationProps {
   tradeSetup: TradeSetup | null;
@@ -259,6 +259,58 @@ export default function TradeRecommendation({
             </div>
           )}
         </>
+      )}
+
+      {/* ── Technical Summary (mini row) ── */}
+      {!isWait && tradeSetup.technicals && (
+        <div className="bg-background rounded-lg p-3">
+          <p className="text-[9px] text-text-muted uppercase tracking-wider mb-2">Technical Confluence</p>
+          <div className="flex flex-wrap gap-1.5">
+            {tradeSetup.technicals.rsi !== null && (
+              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+                (tradeSetup.technicals.rsiZone === 'OVERBOUGHT' || tradeSetup.technicals.rsiZone === 'OVERSOLD')
+                  ? 'text-warning border-warning/30 bg-warning/5'
+                  : tradeSetup.technicals.rsiZone === 'BULLISH' ? 'text-bullish border-bullish/30 bg-bullish/5'
+                  : tradeSetup.technicals.rsiZone === 'BEARISH' ? 'text-bearish border-bearish/20 bg-bearish/5'
+                  : 'text-text-secondary border-border bg-card'
+              }`}>
+                RSI {tradeSetup.technicals.rsi?.toFixed(0)} · {tradeSetup.technicals.rsiZone}
+              </span>
+            )}
+            {tradeSetup.technicals.emaTrend && (
+              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+                tradeSetup.technicals.emaTrend?.includes('BULLISH') ? 'text-bullish border-bullish/30 bg-bullish/5'
+                : tradeSetup.technicals.emaTrend?.includes('BEARISH') ? 'text-bearish border-bearish/20 bg-bearish/5'
+                : 'text-text-secondary border-border bg-card'
+              }`}>
+                EMA · {tradeSetup.technicals.emaTrend?.replace('_', ' ')}
+              </span>
+            )}
+            {tradeSetup.technicals.macdTrend && (
+              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+                tradeSetup.technicals.macdTrend?.includes('BULLISH') ? 'text-bullish border-bullish/30 bg-bullish/5'
+                : tradeSetup.technicals.macdTrend?.includes('BEARISH') ? 'text-bearish border-bearish/20 bg-bearish/5'
+                : 'text-text-secondary border-border bg-card'
+              }`}>
+                MACD · {tradeSetup.technicals.macdTrend?.replace('_', ' ')}
+              </span>
+            )}
+            {tradeSetup.technicals.pattern && (
+              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+                tradeSetup.technicals.patternBias === 'bullish' ? 'text-bullish border-bullish/30 bg-bullish/5'
+                : tradeSetup.technicals.patternBias === 'bearish' ? 'text-bearish border-bearish/20 bg-bearish/5'
+                : 'text-text-secondary border-border bg-card'
+              }`}>
+                {tradeSetup.technicals.patternEmoji} {tradeSetup.technicals.pattern?.replace(/_/g, ' ')}
+              </span>
+            )}
+            {tradeSetup.technicals.bbSqueeze && (
+              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border text-warning border-warning/30 bg-warning/5 animate-pulse">
+                🔥 BB Squeeze
+              </span>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Non-market-hours notice ── */}

@@ -19,7 +19,7 @@ const { parseOptionChain, computeOIAnalysis } = require('../utils/oiParser');
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 const { generateSignals } = require('../signals/signalEngine');
-const { computeVWAP, computePivotPoints } = require('../utils/technicals');
+const { computeVWAP, computePivotPoints, computeAllIndicators } = require('../utils/technicals');
 const { addSnapshot, getOIPattern, getTradeSetup } = require('../utils/oiTracker');
 const {
   saveOptionChainSnapshot,
@@ -640,10 +640,31 @@ async function fetchAndProcess() {
         totalCallOI: cache.liveOI.callOI,
         totalPutOI:  cache.liveOI.putOI,
       };
+
+      // ── Patch cache.optionChain with live OI/PCR so frontend always gets fresh data ──
+      const livePCR = cache.liveOI.callOI > 0
+        ? cache.liveOI.putOI / cache.liveOI.callOI : 1;
+      const livePCRSentiment = livePCR >= 1.5 ? 'EXTREMELY_BULLISH'
+        : livePCR >= 1.2 ? 'BULLISH'
+        : livePCR >= 0.9 ? 'NEUTRAL'
+        : livePCR >= 0.7 ? 'BEARISH' : 'EXTREMELY_BEARISH';
+
+      cache.optionChain = {
+        ...enrichedChain,
+        pcr: parseFloat(livePCR.toFixed(3)),
+        pcrSentiment: livePCRSentiment,
+      };
+
+      // Compute all technical indicators from candle history
+      const candles = priceData.candles || [];
+      const technicals = computeAllIndicators(candles);
+
       const signals = generateSignals({
         price: priceData,
-        optionChain: enrichedChain,
+        optionChain: cache.optionChain,  // always live now
         isMarketOpen: cache.isMarketOpen,
+        candles,
+        technicals,
       });
       cache.signals = signals;
 
@@ -651,15 +672,16 @@ async function fetchAndProcess() {
       const tradeSetup = getTradeSetup({
         price:    spot,
         vwap:     priceData.vwap,
-        pcr:      enrichedChain.pcr       || 1,
-        maxPain:  enrichedChain.maxPain,
-        callWall: enrichedChain.highestCallStrike,
-        putWall:  enrichedChain.highestPutStrike,
+        pcr:      cache.optionChain.pcr       || 1,
+        maxPain:  cache.optionChain.maxPain,
+        callWall: cache.optionChain.highestCallStrike,
+        putWall:  cache.optionChain.highestPutStrike,
         oiPattern: cache.oiPattern,
-        strikes:   enrichedChain.strikes  || [],
+        strikes:   cache.optionChain.strikes  || [],
         capital:   10000,
         pivots:    priceData.pivots,
         isSimulation: !cache.isMarketOpen,
+        technicals,
       });
       cache.tradeSetup = {
         ...tradeSetup,

@@ -11,7 +11,11 @@
  *   6. Smart trade setup for ₹10k capital
  */
 
-const { getVWAPPosition } = require('../utils/technicals');
+const {
+  getVWAPPosition,
+  computeAllIndicators,
+  computeATR,
+} = require('../utils/technicals');
 
 // Track previous signals to avoid duplicates and detect NEW signals
 const signalHistory = [];
@@ -91,12 +95,12 @@ function detectOIPattern(currentPrice, currentTotalOI, oiHistory) {
 
 /**
  * Generate a specific trade recommendation for a ₹10k capital intraday trader.
- * - Selects CE or PE based on bias + OI pattern
+ * - Selects CE or PE based on bias + OI pattern + technical indicators
  * - Finds the affordable strike (ATM or 1 OTM) within ₹10k budget
- * - Computes entry, target (+40%), stop loss (-28%), R:R ratio
- * - Explains WHY this setup is valid
+ * - Computes entry, target (+40%), stop loss (ATR-based or -25%), R:R ratio
+ * - Explains WHY this setup is valid with full technical confluence
  */
-function generateTradeSetup(price, optionChain, oiPattern, signals) {
+function generateTradeSetup(price, optionChain, oiPattern, signals, technicals) {
   if (!price || !optionChain || !oiPattern) {
     return { bias: 'WAIT', reasons: ['Waiting for data'], warnings: ['System warming up'], lots: 0, confidence: 0 };
   }
@@ -176,6 +180,145 @@ function generateTradeSetup(price, optionChain, oiPattern, signals) {
   if (bias !== 'WAIT' && (bullishSignals + bearishSignals) > 2) {
     reasons.push(`${Math.max(bullishSignals, bearishSignals)} confluence signals agree on this direction`);
     confidence += 5;
+  }
+
+  // ── Technical Indicator Confluence ────────────────────────────────────────
+  if (technicals && bias !== 'WAIT') {
+    const { rsi, ema, macd, bb, pattern, techBias, bullScore, bearScore } = technicals;
+
+    // RSI
+    if (rsi && rsi.rsi !== null) {
+      if (bias === 'BUY_CE') {
+        if (rsi.rsi >= 75) {
+          warnings.push(`RSI ${rsi.rsi} — Overbought territory. CE premium may contract. Consider smaller position.`);
+          confidence -= 10;
+        } else if (rsi.rsi >= 55 && rsi.rsi < 75) {
+          reasons.push(`RSI ${rsi.rsi} in bullish zone (55-75) — momentum favors upside`);
+          confidence += 8;
+        } else if (rsi.rsi < 40) {
+          warnings.push(`RSI ${rsi.rsi} — Weak bullish momentum. Technicals lagging OI signal.`);
+          confidence -= 5;
+        }
+      } else if (bias === 'BUY_PE') {
+        if (rsi.rsi <= 25) {
+          warnings.push(`RSI ${rsi.rsi} — Oversold territory. PE premium may contract. Consider smaller position.`);
+          confidence -= 10;
+        } else if (rsi.rsi <= 45 && rsi.rsi > 25) {
+          reasons.push(`RSI ${rsi.rsi} in bearish zone (25-45) — momentum favors downside`);
+          confidence += 8;
+        } else if (rsi.rsi > 60) {
+          warnings.push(`RSI ${rsi.rsi} — Still bullish energy. OI signal may be early.`);
+          confidence -= 5;
+        }
+      }
+    }
+
+    // EMA
+    if (ema) {
+      const emaTrend = ema.trend;
+      if (bias === 'BUY_CE') {
+        if (emaTrend === 'STRONG_BULLISH') {
+          reasons.push(`EMA stack bullish: EMA9(${ema.ema9}) > EMA21(${ema.ema21}) > EMA50(${ema.ema50}) — strong uptrend`);
+          confidence += 12;
+        } else if (emaTrend === 'BULLISH') {
+          reasons.push(`EMA9(${ema.ema9}) above EMA21(${ema.ema21}) — short-term trend bullish`);
+          confidence += 7;
+        } else if (emaTrend === 'BEARISH' || emaTrend === 'STRONG_BEARISH') {
+          warnings.push(`EMA stack bearish (${ema.ema9} < ${ema.ema21}) — technicals diverge from OI signal`);
+          confidence -= 8;
+        }
+      } else if (bias === 'BUY_PE') {
+        if (emaTrend === 'STRONG_BEARISH') {
+          reasons.push(`EMA stack bearish: EMA9(${ema.ema9}) < EMA21(${ema.ema21}) < EMA50(${ema.ema50}) — strong downtrend`);
+          confidence += 12;
+        } else if (emaTrend === 'BEARISH') {
+          reasons.push(`EMA9(${ema.ema9}) below EMA21(${ema.ema21}) — short-term trend bearish`);
+          confidence += 7;
+        } else if (emaTrend === 'BULLISH' || emaTrend === 'STRONG_BULLISH') {
+          warnings.push(`EMA stack bullish (${ema.ema9} > ${ema.ema21}) — technicals diverge from OI signal`);
+          confidence -= 8;
+        }
+      }
+    }
+
+    // MACD
+    if (macd) {
+      if (bias === 'BUY_CE') {
+        if (macd.bullishCross) {
+          reasons.push(`MACD Golden Cross just triggered — momentum shift confirmed bullish`);
+          confidence += 10;
+        } else if (macd.indicator === 'bullish' && macd.histGrowing) {
+          reasons.push(`MACD histogram expanding bullish (${macd.histogram.toFixed(1)}) — momentum building`);
+          confidence += 6;
+        } else if (macd.indicator === 'bearish') {
+          warnings.push(`MACD bearish (${macd.macdLine} < ${macd.signalLine}) — divergence with OI signal`);
+          confidence -= 6;
+        }
+      } else if (bias === 'BUY_PE') {
+        if (macd.bearishCross) {
+          reasons.push(`MACD Death Cross just triggered — momentum shift confirmed bearish`);
+          confidence += 10;
+        } else if (macd.indicator === 'bearish' && !macd.histGrowing) {
+          reasons.push(`MACD histogram expanding bearish (${macd.histogram.toFixed(1)}) — selling pressure building`);
+          confidence += 6;
+        } else if (macd.indicator === 'bullish') {
+          warnings.push(`MACD bullish (${macd.macdLine} > ${macd.signalLine}) — divergence with OI signal`);
+          confidence -= 6;
+        }
+      }
+    }
+
+    // Bollinger Bands
+    if (bb) {
+      if (bias === 'BUY_CE') {
+        if (bb.zone === 'LOWER_BAND') {
+          reasons.push(`Price at lower Bollinger Band (${bb.lower}) — mean reversion bounce likely, CE entry ideal`);
+          confidence += 8;
+        } else if (bb.zone === 'UPPER_BAND') {
+          warnings.push(`Price at upper Bollinger Band (${bb.upper}) — stretched, CE premium may not expand much`);
+          confidence -= 5;
+        }
+        if (bb.squeeze) {
+          reasons.push(`Bollinger Band squeeze detected (bandwidth ${bb.bandwidth.toFixed(1)}%) — explosive move imminent`);
+          confidence += 5;
+        }
+      } else if (bias === 'BUY_PE') {
+        if (bb.zone === 'UPPER_BAND') {
+          reasons.push(`Price at upper Bollinger Band (${bb.upper}) — mean reversion fall likely, PE entry ideal`);
+          confidence += 8;
+        } else if (bb.zone === 'LOWER_BAND') {
+          warnings.push(`Price at lower Bollinger Band (${bb.lower}) — stretched downside, PE may not expand much`);
+          confidence -= 5;
+        }
+        if (bb.squeeze) {
+          reasons.push(`Bollinger Band squeeze detected (bandwidth ${bb.bandwidth.toFixed(1)}%) — explosive move imminent`);
+          confidence += 5;
+        }
+      }
+    }
+
+    // Candlestick Pattern
+    if (pattern) {
+      if (bias === 'BUY_CE' && pattern.bias === 'bullish') {
+        reasons.push(`${pattern.emoji} ${pattern.pattern.replace(/_/g, ' ')} — ${pattern.description}`);
+        confidence += 10;
+      } else if (bias === 'BUY_PE' && pattern.bias === 'bearish') {
+        reasons.push(`${pattern.emoji} ${pattern.pattern.replace(/_/g, ' ')} — ${pattern.description}`);
+        confidence += 10;
+      } else if (pattern.bias !== 'neutral' && pattern.bias !== bias.includes('CE') ? 'bullish' : 'bearish') {
+        warnings.push(`${pattern.emoji} Candlestick pattern (${pattern.pattern.replace(/_/g, ' ')}) conflicts with trade direction`);
+        confidence -= 5;
+      } else if (pattern.pattern === 'DOJI') {
+        warnings.push('Doji candle — market indecision. Wait for next candle to confirm direction.');
+        confidence -= 3;
+      }
+    }
+
+    // Overall technical alignment summary
+    const techAlign = bias === 'BUY_CE' ? techBias === 'bullish' : techBias === 'bearish';
+    if (!techAlign && techBias !== 'neutral') {
+      warnings.push(`Technical indicators (score: Bull ${bullScore} vs Bear ${bearScore}) diverge from OI signal — reduce size`);
+    }
   }
 
   // No trade conditions
@@ -258,14 +401,29 @@ function generateTradeSetup(price, optionChain, oiPattern, signals) {
   }
 
   // ── Calculate R:R ─────────────────────────────────────────────────────────
-  // 1:2 minimum. Stretch to 1:3 at high confidence (>=75%)
+  // Use ATR-based SL when available, otherwise fixed -25%
   const entry = selectedLTP;
   const rrMult = confidence >= 75 ? 1.75 : 1.50; // 1:3 or 1:2
   const target = Math.round(entry * rrMult);      // +50% or +75%
-  const sl = Math.round(entry * 0.75);            // -25% SL always
+
+  // ATR-based SL: map underlying ATR to option premium SL
+  // A good heuristic: option moves ~delta per 1pt underlying move
+  // For ATM option delta ≈ 0.5. So optionSL = entry - atr * 0.5 * 1.5
+  let sl = Math.round(entry * 0.75); // default -25%
+  let slMethod = 'fixed';
+  if (technicals && technicals.atr) {
+    const delta = 0.5; // ATM delta approximation
+    const atrBasedSL = Math.round(entry - technicals.atr * delta * 1.5);
+    if (atrBasedSL > 0 && atrBasedSL < entry * 0.9 && atrBasedSL > entry * 0.50) {
+      sl = atrBasedSL;
+      slMethod = 'ATR';
+      reasons.push(`ATR-based SL: underlying ATR=${technicals.atr.toFixed(0)}pts → option SL set at ₹${sl}`);
+    }
+  }
+
   const reward = target - entry;
   const risk = entry - sl;
-  const rrRatio = (reward / risk).toFixed(1);
+  const rrRatio = risk > 0 ? (reward / risk).toFixed(1) : '1.5';
 
   const investment = Math.round(lots * entry * LOT_SIZE);
   const pnlTarget = Math.round(lots * (target - entry) * LOT_SIZE);
@@ -298,7 +456,7 @@ function generateTradeSetup(price, optionChain, oiPattern, signals) {
   }
 
   const optionType = bias === 'BUY_CE' ? 'CE' : 'PE';
-  reasons.push(`₹${investment} invested | Target +₹${pnlTarget} (${((pnlTarget / investment) * 100).toFixed(0)}%) | SL -₹${Math.abs(pnlSL)}`);
+  reasons.push(`₹${investment} invested | Target +₹${pnlTarget} (${((pnlTarget / investment) * 100).toFixed(0)}%) | SL -₹${Math.abs(pnlSL)} [${slMethod} SL]`);
 
   return {
     bias,
@@ -312,13 +470,29 @@ function generateTradeSetup(price, optionChain, oiPattern, signals) {
     stopLoss: sl,
     rewardRisk: `1:${rrRatio}`,
     oiPattern: oiPattern.pattern,
-    confidence: Math.min(confidence, 90),
+    confidence: Math.min(confidence, 92),
     reasons,
     warnings,
     timeframe: '5m',
     capital: CAPITAL,
     pnlTarget,
     pnlSL,
+    // Expose key technicals for frontend display
+    technicals: technicals ? {
+      rsi: technicals.rsi?.rsi ?? null,
+      rsiZone: technicals.rsi?.zone ?? null,
+      emaTrend: technicals.ema?.trend ?? null,
+      macdTrend: technicals.macd?.trend ?? null,
+      bbZone: technicals.bb?.zone ?? null,
+      bbSqueeze: technicals.bb?.squeeze ?? false,
+      pattern: technicals.pattern?.pattern ?? null,
+      patternEmoji: technicals.pattern?.emoji ?? null,
+      patternBias: technicals.pattern?.bias ?? null,
+      atr: technicals.atr,
+      techBias: technicals.techBias,
+      bullScore: technicals.bullScore,
+      bearScore: technicals.bearScore,
+    } : null,
   };
 }
 
@@ -328,7 +502,7 @@ function generateTradeSetup(price, optionChain, oiPattern, signals) {
  * Main signal generation function.
  * Takes current market state and returns signals + OI pattern + trade setup.
  */
-function generateSignals({ price, optionChain, isMarketOpen, oiHistory }) {
+function generateSignals({ price, optionChain, isMarketOpen, oiHistory, candles, technicals }) {
   if (!price || !optionChain) return signalHistory.slice(-20);
 
   const signals = [];
@@ -491,6 +665,179 @@ function generateSignals({ price, optionChain, isMarketOpen, oiHistory }) {
       metadata: { pcr },
       timestamp,
     }));
+  }
+
+  // ── Technical Indicator Signals (from candle data) ─────────────────────
+  if (technicals) {
+    const { rsi, ema, macd, bb, pattern } = technicals;
+
+    // RSI signals
+    if (rsi && rsi.rsi !== null) {
+      if (rsi.rsi >= 55 && rsi.rsi < 72) {
+        signals.push(createSignal({
+          type: 'RSI_BULLISH',
+          label: `📊 RSI Bullish (${rsi.rsi})`,
+          description: `RSI at ${rsi.rsi} — in bullish momentum zone (55-72). Buyers in control, trend intact.`,
+          confidence: Math.min(80, 50 + (rsi.rsi - 55) * 1.5),
+          indicator: 'bullish',
+          metadata: { rsi: rsi.rsi, zone: rsi.zone },
+          timestamp,
+        }));
+      } else if (rsi.rsi <= 45 && rsi.rsi > 28) {
+        signals.push(createSignal({
+          type: 'RSI_BEARISH',
+          label: `📊 RSI Bearish (${rsi.rsi})`,
+          description: `RSI at ${rsi.rsi} — in bearish momentum zone (28-45). Sellers dominating, downtrend active.`,
+          confidence: Math.min(80, 50 + (45 - rsi.rsi) * 1.5),
+          indicator: 'bearish',
+          metadata: { rsi: rsi.rsi, zone: rsi.zone },
+          timestamp,
+        }));
+      } else if (rsi.rsi >= 72) {
+        signals.push(createSignal({
+          type: 'RSI_OVERBOUGHT',
+          label: `⚠️ RSI Overbought (${rsi.rsi})`,
+          description: `RSI at ${rsi.rsi} — overbought zone. CE premiums at risk of contraction. Watch for reversal.`,
+          confidence: 65,
+          indicator: 'warning',
+          metadata: { rsi: rsi.rsi, zone: rsi.zone },
+          timestamp,
+        }));
+      } else if (rsi.rsi <= 28) {
+        signals.push(createSignal({
+          type: 'RSI_OVERSOLD',
+          label: `⚠️ RSI Oversold (${rsi.rsi})`,
+          description: `RSI at ${rsi.rsi} — oversold zone. PE premiums at risk of contraction. Bounce possible.`,
+          confidence: 65,
+          indicator: 'warning',
+          metadata: { rsi: rsi.rsi, zone: rsi.zone },
+          timestamp,
+        }));
+      }
+    }
+
+    // EMA signals
+    if (ema) {
+      if (ema.trend === 'STRONG_BULLISH') {
+        signals.push(createSignal({
+          type: 'EMA_BULL_STACK',
+          label: `📈 EMA Bull Stack`,
+          description: `Price(${ema.price}) > EMA9(${ema.ema9}) > EMA21(${ema.ema21}) > EMA50(${ema.ema50}) — perfect bull alignment`,
+          confidence: 78,
+          indicator: 'bullish',
+          metadata: { ema9: ema.ema9, ema21: ema.ema21, ema50: ema.ema50 },
+          timestamp,
+        }));
+      } else if (ema.trend === 'STRONG_BEARISH') {
+        signals.push(createSignal({
+          type: 'EMA_BEAR_STACK',
+          label: `📉 EMA Bear Stack`,
+          description: `Price(${ema.price}) < EMA9(${ema.ema9}) < EMA21(${ema.ema21}) < EMA50(${ema.ema50}) — perfect bear alignment`,
+          confidence: 78,
+          indicator: 'bearish',
+          metadata: { ema9: ema.ema9, ema21: ema.ema21, ema50: ema.ema50 },
+          timestamp,
+        }));
+      } else if (ema.bullStack === false && ema.signal === 'bullish') {
+        signals.push(createSignal({
+          type: 'EMA_BULLISH_CROSS',
+          label: `🟡 EMA Bullish Cross`,
+          description: `EMA9(${ema.ema9}) crossed above EMA21(${ema.ema21}) — short-term momentum turning bullish`,
+          confidence: 62,
+          indicator: 'bullish',
+          metadata: { ema9: ema.ema9, ema21: ema.ema21 },
+          timestamp,
+        }));
+      } else if (ema.bearStack === false && ema.signal === 'bearish') {
+        signals.push(createSignal({
+          type: 'EMA_BEARISH_CROSS',
+          label: `🟡 EMA Bearish Cross`,
+          description: `EMA9(${ema.ema9}) crossed below EMA21(${ema.ema21}) — short-term momentum turning bearish`,
+          confidence: 62,
+          indicator: 'bearish',
+          metadata: { ema9: ema.ema9, ema21: ema.ema21 },
+          timestamp,
+        }));
+      }
+    }
+
+    // MACD signals
+    if (macd) {
+      if (macd.bullishCross) {
+        signals.push(createSignal({
+          type: 'MACD_GOLDEN_CROSS',
+          label: `✨ MACD Golden Cross`,
+          description: `MACD line(${macd.macdLine}) just crossed above signal(${macd.signalLine}) — powerful bullish momentum shift`,
+          confidence: 80,
+          indicator: 'bullish',
+          metadata: { macdLine: macd.macdLine, signalLine: macd.signalLine, histogram: macd.histogram },
+          timestamp,
+        }));
+      } else if (macd.bearishCross) {
+        signals.push(createSignal({
+          type: 'MACD_DEATH_CROSS',
+          label: `💀 MACD Death Cross`,
+          description: `MACD line(${macd.macdLine}) just crossed below signal(${macd.signalLine}) — powerful bearish momentum shift`,
+          confidence: 80,
+          indicator: 'bearish',
+          metadata: { macdLine: macd.macdLine, signalLine: macd.signalLine, histogram: macd.histogram },
+          timestamp,
+        }));
+      } else if (macd.indicator === 'bullish' && macd.histGrowing && macd.histogram > 0) {
+        signals.push(createSignal({
+          type: 'MACD_BULLISH_MOMENTUM',
+          label: `📊 MACD Expanding Bullish`,
+          description: `MACD histogram expanding (+${macd.histogram.toFixed(1)}) — bullish momentum accelerating`,
+          confidence: 68,
+          indicator: 'bullish',
+          metadata: { macdLine: macd.macdLine, signalLine: macd.signalLine, histogram: macd.histogram },
+          timestamp,
+        }));
+      } else if (macd.indicator === 'bearish' && !macd.histGrowing && macd.histogram < 0) {
+        signals.push(createSignal({
+          type: 'MACD_BEARISH_MOMENTUM',
+          label: `📊 MACD Expanding Bearish`,
+          description: `MACD histogram expanding (${macd.histogram.toFixed(1)}) — bearish momentum accelerating`,
+          confidence: 68,
+          indicator: 'bearish',
+          metadata: { macdLine: macd.macdLine, signalLine: macd.signalLine, histogram: macd.histogram },
+          timestamp,
+        }));
+      }
+    }
+
+    // Bollinger Band signals
+    if (bb) {
+      if (bb.squeeze) {
+        signals.push(createSignal({
+          type: 'BB_SQUEEZE',
+          label: `🔥 Bollinger Squeeze`,
+          description: `BB bandwidth only ${bb.bandwidth.toFixed(1)}% — market coiled, explosive breakout imminent. Watch volume for direction.`,
+          confidence: 75,
+          indicator: 'warning',
+          metadata: { bandwidth: bb.bandwidth, upper: bb.upper, lower: bb.lower },
+          timestamp,
+        }));
+      }
+    }
+
+    // Candlestick pattern signals
+    if (pattern) {
+      const indicator = pattern.bias === 'bullish' ? 'bullish'
+        : pattern.bias === 'bearish' ? 'bearish' : 'neutral';
+      const confidence = ['BULLISH_ENGULFING', 'BEARISH_ENGULFING', 'THREE_WHITE_SOLDIERS', 'THREE_BLACK_CROWS', 'BULLISH_MARUBOZU', 'BEARISH_MARUBOZU'].includes(pattern.pattern) ? 75
+        : ['HAMMER', 'SHOOTING_STAR'].includes(pattern.pattern) ? 70
+        : 55;
+      signals.push(createSignal({
+        type: `CANDLE_${pattern.pattern}`,
+        label: `${pattern.emoji} ${pattern.pattern.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}`,
+        description: pattern.description,
+        confidence,
+        indicator,
+        metadata: { pattern: pattern.pattern, bias: pattern.bias },
+        timestamp,
+      }));
+    }
   }
 
   // ── Update history ──────────────────────────────────────────────────────
