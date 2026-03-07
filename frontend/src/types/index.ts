@@ -308,4 +308,278 @@ export interface MarketUpdate {
   oiPattern?: OIPattern | null;
   tradeSetup?: TradeSetup | null;
   lastFetch?: string;
+  // Extended analytics
+  gammaExposure?: GammaExposure | null;
+  liquidityLevels?: LiquidityLevels | null;
+  marketStructure?: MarketStructure | null;
+  openingRange?: OpeningRange | null;
+  fiiDii?: FIIDIIData | null;
+  signalScore?: SignalScore | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAMMA EXPOSURE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface StrikeGEX {
+  strike: number;
+  callGEX: number;
+  putGEX: number;
+  netGEX: number;
+  gamma: number;
+  callOI: number;
+  putOI: number;
+  iv: number;
+  distFromSpot: number;
+  isATM: boolean;
+}
+
+export interface GammaZone {
+  low: number;
+  high: number;
+  totalGEX: number;
+}
+
+export interface SqueezeLevel {
+  strike: number;
+  netGEX: number;
+  type: 'POSITIVE' | 'NEGATIVE';
+  label: string;
+}
+
+export interface GammaExposure {
+  strikeGEX: StrikeGEX[];
+  netGEX: number;
+  netGEXBillions: number;
+  gammaFlipLevel: number | null;
+  priceVsFlip: number | null;
+  positiveGammaZone: GammaZone | null;
+  negativeGammaZone: GammaZone | null;
+  squeezeLevels: SqueezeLevel[];
+  dte: number;
+  bias: 'POSITIVE_GAMMA' | 'NEGATIVE_GAMMA' | 'NEUTRAL';
+  summary: string;
+  isPositiveGamma: boolean;
+  timestamp: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIQUIDITY LEVELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface EqualLevel {
+  price: number;
+  type: 'EQUAL_HIGH' | 'EQUAL_LOW';
+  label: string;
+  count: number;
+  strength: 'STRONG' | 'MODERATE';
+  distance: number;
+  bias: 'resistance' | 'support';
+}
+
+export interface StopHunt {
+  type: string;
+  label: string;
+  sweepAt: number;
+  closeAt: number;
+  recovery: number;
+  time: number;
+  bias: 'bullish' | 'bearish';
+  strength: 'CONFIRMED' | 'WEAK';
+}
+
+export interface KeyLevel {
+  price: number;
+  type: string;
+  label: string;
+  importance: 'HIGH' | 'MEDIUM' | 'LOW';
+  bias: 'resistance' | 'support' | string;
+  distance: number;
+  time?: number;
+}
+
+export interface LiquidityLevels {
+  prevDayHigh: number | null;
+  prevDayLow: number | null;
+  todayHigh: number | null;
+  todayLow: number | null;
+  equalHighs: EqualLevel[];
+  equalLows: EqualLevel[];
+  stopHunts: StopHunt[];
+  keyLevels: KeyLevel[];
+  nearestLevel: KeyLevel | null;
+  spot: number;
+  summary: string;
+  timestamp: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET STRUCTURE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TrendInfo {
+  trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS';
+  strength: 'STRONG' | 'MODERATE' | 'WEAK';
+  description: string;
+}
+
+export interface SwingPoint {
+  price: number;
+  index: number;
+  time: number;
+  type: 'SWING_HIGH' | 'SWING_LOW';
+}
+
+export interface BOSEvent {
+  type: 'BULLISH_BOS' | 'BEARISH_BOS';
+  label: string;
+  price: number;
+  time: number;
+  description: string;
+  bias: 'bullish' | 'bearish';
+  isRecent: boolean;
+}
+
+export interface CHoCHEvent {
+  type: 'BULLISH_CHOCH' | 'BEARISH_CHOCH';
+  label: string;
+  price: number;
+  description: string;
+  bias: 'bullish' | 'bearish';
+}
+
+export interface ConsolidationZone {
+  high: number;
+  low: number;
+  mid: number;
+  rangePct: number;
+  candles: number;
+  label: string;
+  breakoutLevel: number;
+  breakdownLevel: number;
+  isActive: boolean;
+}
+
+export interface RangeExpansion {
+  time: number;
+  range: number;
+  avgRange: number;
+  ratio: number;
+  bias: 'bullish' | 'bearish';
+  label: string;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface MarketStructure {
+  trend: TrendInfo;
+  swingHighs: SwingPoint[];
+  swingLows: SwingPoint[];
+  bosEvents: BOSEvent[];
+  choch: CHoCHEvent | null;
+  consolidation: ConsolidationZone | null;
+  rangeExpansion: RangeExpansion[];
+  summary: string;
+  bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  trendStrength: string;
+  timestamp: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OPENING RANGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ORBreakout {
+  direction: 'BULLISH' | 'BEARISH';
+  breakLevel: number;
+  closePrice: number;
+  penetration: number;
+  time: number;
+  strength: 'STRONG' | 'MODERATE' | 'WEAK';
+  volume?: number;
+  label: string;
+}
+
+export interface OpeningRange {
+  high: number | null;
+  low: number | null;
+  mid: number | null;
+  range: number | null;
+  rangePct: number;
+  status: 'ABOVE_OR' | 'BELOW_OR' | 'INSIDE_OR' | 'NO_DATA' | 'MARKET_NOT_OPEN';
+  label: string;
+  extended: { high: number; low: number; mid: number; range: number } | null;
+  breakout: ORBreakout | null;
+  target1: number | null;
+  target2: number | null;
+  stop: number | null;
+  score: number;
+  candleCount: number;
+  timestamp: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FII / DII INSTITUTIONAL FLOW
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface InstitutionFlow {
+  buyValue: number;
+  sellValue: number;
+  netValue: number;
+  netValueCr: string;
+  direction: 'BUYER' | 'SELLER' | 'FLAT';
+  isBuyer: boolean;
+  isSeller: boolean;
+}
+
+export interface FlowBias {
+  label: string;
+  bias: 'STRONGLY_BULLISH' | 'BULLISH' | 'NEUTRAL' | 'BEARISH' | 'STRONGLY_BEARISH';
+  color: string;
+  description: string;
+}
+
+export interface FIIDIIData {
+  fii: InstitutionFlow;
+  dii: InstitutionFlow;
+  netCombined: number;
+  netCombinedCr: string;
+  bias: FlowBias;
+  isMock: boolean;
+  isStale: boolean;
+  date: string;
+  fetchTime: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNAL SCORE (0-100 probability scoring)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ScoreComponent {
+  name: string;
+  bull: number;
+  bear: number;
+  label: string;
+}
+
+export interface SignalScore {
+  bullScore: number;
+  bearScore: number;
+  rangeScore: number;
+  bullPct: number;
+  bearPct: number;
+  rangePct: number;
+  signal: 'STRONG_BULL' | 'BULL' | 'RANGE' | 'BEAR' | 'STRONG_BEAR';
+  signalLabel: string;
+  signalColor: 'bullish' | 'bearish' | 'neutral';
+  explanation: string;
+  components: ScoreComponent[];
+  activeComponents: ScoreComponent[];
+  topBullComponents: string[];
+  topBearComponents: string[];
+  isHighConfidence: boolean;
+  isStrongSignal: boolean;
+  timestamp: string;
+}
+

@@ -20,6 +20,7 @@ const optionChainRoutes = require('./routes/optionChain');
 const marketDataRoutes = require('./routes/marketData');
 const signalsRoutes = require('./routes/signals');
 const aiAnalysisRoutes = require('./routes/aiAnalysis');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 const server = http.createServer(app);
@@ -51,6 +52,7 @@ app.use('/api/option-chain', optionChainRoutes);
 app.use('/api/market', marketDataRoutes);
 app.use('/api/signals', signalsRoutes);
 app.use('/api/ai', aiAnalysisRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

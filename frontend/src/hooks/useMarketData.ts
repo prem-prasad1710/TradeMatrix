@@ -8,7 +8,21 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { MarketUpdate, NiftyPrice, OptionChain, TradingSignal, GiftNifty, OIPattern, TradeSetup } from '@/types';
+import type {
+  MarketUpdate,
+  NiftyPrice,
+  OptionChain,
+  TradingSignal,
+  GiftNifty,
+  OIPattern,
+  TradeSetup,
+  GammaExposure,
+  LiquidityLevels,
+  MarketStructure,
+  OpeningRange,
+  FIIDIIData,
+  SignalScore,
+} from '@/types';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001/ws';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
@@ -20,6 +34,13 @@ interface MarketDataState {
   signals: TradingSignal[];
   oiPattern: OIPattern | null;
   tradeSetup: TradeSetup | null;
+  // Extended analytics
+  gammaExposure: GammaExposure | null;
+  liquidityLevels: LiquidityLevels | null;
+  marketStructure: MarketStructure | null;
+  openingRange: OpeningRange | null;
+  fiiDii: FIIDIIData | null;
+  signalScore: SignalScore | null;
   isMarketOpen: boolean;
   isConnected: boolean;
   isLoading: boolean;
@@ -35,6 +56,12 @@ const initialState: MarketDataState = {
   signals: [],
   oiPattern: null,
   tradeSetup: null,
+  gammaExposure: null,
+  liquidityLevels: null,
+  marketStructure: null,
+  openingRange: null,
+  fiiDii: null,
+  signalScore: null,
   isMarketOpen: false,
   isConnected: false,
   isLoading: true,
@@ -58,6 +85,12 @@ export function useMarketData() {
       signals: update.signals?.length ? update.signals : prev.signals,
       oiPattern: update.oiPattern ?? prev.oiPattern,
       tradeSetup: update.tradeSetup ?? prev.tradeSetup,
+      gammaExposure:  update.gammaExposure  ?? prev.gammaExposure,
+      liquidityLevels: update.liquidityLevels ?? prev.liquidityLevels,
+      marketStructure: update.marketStructure ?? prev.marketStructure,
+      openingRange:   update.openingRange   ?? prev.openingRange,
+      fiiDii:         update.fiiDii         ?? prev.fiiDii,
+      signalScore:    update.signalScore    ?? prev.signalScore,
       isMarketOpen: update.isMarketOpen ?? prev.isMarketOpen,
       lastUpdate: update.timestamp ?? prev.lastUpdate,
       isLoading: false,

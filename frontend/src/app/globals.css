@@ -2,205 +2,319 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base Dark Theme ────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   DESIGN TOKENS
+───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg: #0a0e1a;
-  --surface: #0f1629;
-  --card: #131d33;
-  --border: #1e2d4a;
-  --bullish: #00d264;
-  --bearish: #ff3d5a;
-  --neutral: #f0a500;
-  --accent: #3b82f6;
-  --text-primary: #e0e6f0;
-  --text-secondary: #7a8fb0;
+  --bg:          #060910;
+  --surface:     #0b0f1e;
+  --card:        #0e1525;
+  --card-hover:  #111a2e;
+  --border:      #182036;
+  --border-glow: #1e2d4a;
+  --accent:      #3b82f6;
+  --accent-dim:  #1d4ed8;
+  --accent-glow: rgba(59,130,246,0.35);
+  --purple:      #8b5cf6;
+  --cyan:        #06b6d4;
+  --bullish:     #00e676;
+  --bullish-dim: #00a854;
+  --bearish:     #ff1744;
+  --bearish-dim: #c0002a;
+  --warning:     #ffc107;
+  --neutral:     #ff9800;
+  --text-primary:   #eef2fa;
+  --text-secondary: #6e84a8;
+  --text-muted:     #3a4d6a;
+  --glow-bull:  0 0 30px rgba(0,230,118,0.18), 0 0 60px rgba(0,230,118,0.08);
+  --glow-bear:  0 0 30px rgba(255,23,68,0.18),  0 0 60px rgba(255,23,68,0.08);
+  --glow-accent:0 0 30px rgba(59,130,246,0.2),  0 0 60px rgba(59,130,246,0.08);
 }
 
-* {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 
 body {
   background-color: var(--bg);
   color: var(--text-primary);
   overflow-x: hidden;
+  font-feature-settings: "tnum" on, "lnum" on;
+  background-image:
+    radial-gradient(ellipse 90% 55% at 15% -5%, rgba(59,130,246,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 45% at 85% 110%, rgba(139,92,246,0.06) 0%, transparent 60%);
+  background-attachment: fixed;
 }
 
-/* ── Trading Card ───────────────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(30,45,74,0.45) 1px, transparent 1px);
+  background-size: 26px 26px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+}
+
+#__next, main, header { position: relative; z-index: 1; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   COMPONENT LAYER
+───────────────────────────────────────────────────────────────────────────── */
 @layer components {
+
+  /* BASE CARD */
   .trading-card {
-    @apply bg-card border border-border rounded-xl p-4 shadow-card;
+    @apply rounded-2xl p-4;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 8px 32px rgba(0,0,0,0.35);
+    transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease;
+  }
+  .trading-card:hover {
+    border-color: rgba(59,130,246,0.2);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.6),
+      0 12px 48px rgba(0,0,0,0.45),
+      0 0 0 1px rgba(59,130,246,0.07),
+      inset 0 1px 0 rgba(255,255,255,0.025);
+    transform: translateY(-1px);
   }
 
-  .trading-card-header {
-    @apply text-text-secondary text-xs font-medium uppercase tracking-wider mb-3 flex items-center gap-2;
+  /* GLOW VARIANT CARDS */
+  .card-bullish {
+    border-color: rgba(0,230,118,0.22) !important;
+    box-shadow: var(--glow-bull), 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(0,230,118,0.04) !important;
+  }
+  .card-bearish {
+    border-color: rgba(255,23,68,0.22) !important;
+    box-shadow: var(--glow-bear), 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,23,68,0.04) !important;
+  }
+  .card-accent {
+    border-color: rgba(59,130,246,0.28) !important;
+    box-shadow: var(--glow-accent), 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(59,130,246,0.05) !important;
   }
 
-  /* Price display */
-  .price-display {
-    @apply font-mono text-text-primary font-semibold;
+  /* CARD LABEL */
+  .card-label {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.13em;
+    text-transform: uppercase; color: var(--text-secondary);
+  }
+  .trading-card-header { @apply card-label mb-3 flex items-center gap-2; }
+
+  /* SECTION DIVIDER */
+  .section-divider {
+    @apply flex items-center gap-3 py-0.5;
+  }
+  .section-divider::before, .section-divider::after {
+    content: '';
+    flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-glow), transparent);
+  }
+  .section-divider span {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; white-space: nowrap;
+    color: var(--text-secondary);
+    padding: 3px 14px; border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border-glow);
   }
 
-  .price-up { @apply text-bullish; }
-  .price-down { @apply text-bearish; }
-  .price-neutral { @apply text-neutral; }
+  /* STAT BOX */
+  .stat-box {
+    @apply rounded-xl p-3 flex flex-col gap-0.5;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .stat-box-label { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+  .stat-box-value { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text-primary); }
 
-  /* Signal badges */
+  /* PRICE */
+  .price-display { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+  .price-up      { color: var(--bullish); }
+  .price-down    { color: var(--bearish); }
+  .price-neutral { color: var(--neutral); }
+  .num-positive  { font-family: 'JetBrains Mono', monospace; color: var(--bullish); }
+  .num-negative  { font-family: 'JetBrains Mono', monospace; color: var(--bearish); }
+  .num-neutral   { font-family: 'JetBrains Mono', monospace; color: var(--text-primary); }
+
+  /* SIGNAL PILLS */
   .signal-bullish {
-    @apply bg-bullish/10 border border-bullish/30 text-bullish px-2 py-1 rounded-md text-xs font-medium;
+    display: inline-flex; align-items: center; gap: 4px;
+    background: linear-gradient(135deg, rgba(0,230,118,0.13), rgba(0,168,84,0.07));
+    border: 1px solid rgba(0,230,118,0.32); color: var(--bullish);
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    box-shadow: 0 0 14px rgba(0,230,118,0.16);
   }
   .signal-bearish {
-    @apply bg-bearish/10 border border-bearish/30 text-bearish px-2 py-1 rounded-md text-xs font-medium;
+    display: inline-flex; align-items: center; gap: 4px;
+    background: linear-gradient(135deg, rgba(255,23,68,0.13), rgba(192,0,42,0.07));
+    border: 1px solid rgba(255,23,68,0.32); color: var(--bearish);
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    box-shadow: 0 0 14px rgba(255,23,68,0.16);
   }
   .signal-neutral {
-    @apply bg-neutral/10 border border-neutral/30 text-neutral px-2 py-1 rounded-md text-xs font-medium;
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.25); color: var(--neutral);
+    padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
   }
   .signal-warning {
-    @apply bg-warning/10 border border-warning/30 text-warning px-2 py-1 rounded-md text-xs font-medium;
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(255,193,7,0.08); border: 1px solid rgba(255,193,7,0.25); color: var(--warning);
+    padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
   }
 
-  /* OI heatmap cells */
-  .oi-cell-call {
-    background: linear-gradient(90deg, transparent, rgba(255, 61, 90, 0.15));
+  /* BUY / SELL BADGES */
+  .badge-buy {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: linear-gradient(135deg, rgba(0,230,118,0.16), rgba(0,168,84,0.09));
+    border: 1px solid rgba(0,230,118,0.42); color: var(--bullish);
+    padding: 3px 13px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+    box-shadow: 0 0 16px rgba(0,230,118,0.2);
   }
-  .oi-cell-put {
-    background: linear-gradient(90deg, rgba(0, 210, 100, 0.15), transparent);
+  .badge-sell {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: linear-gradient(135deg, rgba(255,23,68,0.16), rgba(192,0,42,0.09));
+    border: 1px solid rgba(255,23,68,0.42); color: var(--bearish);
+    padding: 3px 13px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+    box-shadow: 0 0 16px rgba(255,23,68,0.2);
   }
-  .oi-cell-atm {
-    @apply border-l-2 border-r-2 border-accent/50 bg-accent/5;
+  .badge-wait {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(255,193,7,0.09); border: 1px solid rgba(255,193,7,0.32); color: var(--warning);
+    padding: 3px 13px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
   }
 
-  /* Pulse dot for live indicator */
+  /* LIVE DOT */
   .live-dot {
-    @apply w-2 h-2 rounded-full bg-bullish animate-pulse;
+    @apply w-2 h-2 rounded-full;
+    background: var(--bullish);
+    animation: live-ping 2s cubic-bezier(0.4,0,0.6,1) infinite;
   }
 
-  /* Number formatting */
-  .num-positive { @apply text-bullish font-mono; }
-  .num-negative { @apply text-bearish font-mono; }
-  .num-neutral  { @apply text-text-primary font-mono; }
+  /* HEATMAP */
+  .oi-cell-call { background: linear-gradient(90deg, transparent, rgba(255,23,68,0.13)); }
+  .oi-cell-put  { background: linear-gradient(90deg, rgba(0,230,118,0.13), transparent); }
+  .oi-cell-atm  { border-left: 2px solid rgba(59,130,246,0.5); border-right: 2px solid rgba(59,130,246,0.5); background: rgba(59,130,246,0.05); }
+
+  /* GLASSMORPHISM HEADER */
+  .glass-header {
+    background: rgba(6,9,16,0.88);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(24,32,54,0.95);
+    box-shadow: 0 1px 0 rgba(59,130,246,0.06), 0 4px 40px rgba(0,0,0,0.6);
+  }
+
+  /* DATA TABLE */
+  .data-table { @apply w-full; font-size: 12px; }
+  .data-table th {
+    @apply py-2 px-3 text-right first:text-left;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .data-table td {
+    @apply py-1.5 px-3 text-right first:text-left;
+    font-family: 'JetBrains Mono', monospace; transition: background 0.12s ease;
+  }
+  .data-table tr:hover td  { background: rgba(24,32,54,0.5); }
+  .data-table tr.atm-row   { background: rgba(59,130,246,0.04); border-top: 1px solid rgba(59,130,246,0.18); border-bottom: 1px solid rgba(59,130,246,0.18); }
+  .data-table tr.atm-row td { font-weight: 700; }
+
+  /* PROGRESS BAR */
+  .progress-bar-track { height: 6px; border-radius: 999px; background: rgba(24,32,54,0.8); overflow: hidden; }
+  .progress-bar-fill  { height: 100%; border-radius: 999px; transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
 }
 
-/* ── Animations ─────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   ANIMATIONS
+───────────────────────────────────────────────────────────────────────────── */
+@keyframes live-ping {
+  0%   { box-shadow: 0 0 0 0 rgba(0,230,118,0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(0,230,118,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,230,118,0); }
+}
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(0,230,118,0.2); }
+  50%       { box-shadow: 0 0 24px rgba(0,230,118,0.5); }
+}
+@keyframes glow-pulse-red {
+  0%, 100% { box-shadow: 0 0 8px rgba(255,23,68,0.2); }
+  50%       { box-shadow: 0 0 24px rgba(255,23,68,0.5); }
+}
 @keyframes ticker-scroll {
   0%   { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
 }
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 6px 1px rgba(0, 210, 100, 0.15); }
-  50%       { box-shadow: 0 0 14px 3px rgba(0, 210, 100, 0.35); }
-}
-@keyframes glow-pulse-red {
-  0%, 100% { box-shadow: 0 0 6px 1px rgba(255, 61, 90, 0.15); }
-  50%       { box-shadow: 0 0 14px 3px rgba(255, 61, 90, 0.35); }
-}
-@keyframes slide-in-right {
-  from { transform: translateX(24px); opacity: 0; }
-  to   { transform: translateX(0);    opacity: 1; }
-}
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0);   }
-}
-@keyframes scan-line {
-  0%   { background-position: 0% 0%; }
-  100% { background-position: 0% 100%; }
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
-.ticker-text {
-  animation: ticker-scroll 30s linear infinite;
-}
-.animate-slide-in   { animation: slide-in-right 0.3s ease both; }
-.animate-fade-in    { animation: fade-in 0.25s ease both; }
-.glow-bull          { animation: glow-pulse 2s ease-in-out infinite; }
-.glow-bear          { animation: glow-pulse-red 2s ease-in-out infinite; }
+.animate-fade-in  { animation: fade-in 0.4s ease both; }
+.animate-slide-in { animation: slide-in-right 0.3s ease both; }
+.animate-float    { animation: float 3s ease-in-out infinite; }
+.glow-bull        { animation: glow-pulse 2.5s ease-in-out infinite; }
+.glow-bear        { animation: glow-pulse-red 2.5s ease-in-out infinite; }
+.ticker-text      { animation: ticker-scroll 35s linear infinite; }
+.spin-slow        { animation: spin-slow 8s linear infinite; }
 
-/* ── Pro card hover ────────────────────────────────────────────────────────── */
-.trading-card {
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.trading-card:hover {
-  border-color: rgba(59, 130, 246, 0.18);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.06), 0 4px 24px rgba(0, 0, 0, 0.4);
-}
-
-/* ── Signal card glow ──────────────────────────────────────────────────────── */
-.signal-bullish-card {
-  border-color: rgba(0, 210, 100, 0.25) !important;
-  box-shadow: 0 0 20px rgba(0, 210, 100, 0.06), inset 0 1px 0 rgba(0, 210, 100, 0.05);
-}
-.signal-bearish-card {
-  border-color: rgba(255, 61, 90, 0.25) !important;
-  box-shadow: 0 0 20px rgba(255, 61, 90, 0.06), inset 0 1px 0 rgba(255, 61, 90, 0.05);
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(90deg, var(--card) 25%, var(--border-glow) 50%, var(--card) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.6s ease infinite;
+  border-radius: 6px;
 }
 
-/* ── Scrollbar (premium) ───────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+/* Glow on signal cards */
+.signal-bullish-card { border-color: rgba(0,230,118,0.25) !important; box-shadow: 0 0 28px rgba(0,230,118,0.09), inset 0 1px 0 rgba(0,230,118,0.05); }
+.signal-bearish-card { border-color: rgba(255,23,68,0.25) !important;  box-shadow: 0 0 28px rgba(255,23,68,0.09),  inset 0 1px 0 rgba(255,23,68,0.05);  }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SCROLLBAR
+───────────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #1e2d4a, #0f1629);
-  border-radius: 10px;
-}
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #1e2d4a, #0f1629); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #2a4070; }
-
-/* Utility alias used by AI chat panel */
 .custom-scrollbar { scrollbar-width: thin; scrollbar-color: #1e2d4a transparent; }
 
-/* ── Chart overrides ────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   RECHARTS
+───────────────────────────────────────────────────────────────────────────── */
 .recharts-tooltip-wrapper .recharts-default-tooltip {
-  background-color: #0b1325 !important;
-  border: 1px solid #1e2d4a !important;
-  border-radius: 8px !important;
-  font-size: 12px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+  background-color: #070b16 !important; border: 1px solid #182036 !important;
+  border-radius: 10px !important; font-size: 11px !important;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.7) !important;
 }
+.recharts-cartesian-grid line { stroke: rgba(24,32,54,0.7) !important; }
 
-/* ── Table ──────────────────────────────────────────────────────────────────── */
-.data-table {
-  @apply w-full text-xs;
-}
-.data-table th {
-  @apply text-text-secondary font-medium uppercase tracking-wider py-2 px-3 text-right first:text-left;
-}
-.data-table td {
-  @apply py-1.5 px-3 text-right first:text-left font-mono;
-  transition: background 0.15s ease;
-}
-.data-table tr:hover td  { background: rgba(30, 45, 74, 0.5); }
-.data-table tr.atm-row   { @apply bg-accent/5 border-y border-accent/20; }
-.data-table tr.atm-row td { font-weight: 600; }
+/* ─────────────────────────────────────────────────────────────────────────────
+   GRADIENT TEXT
+───────────────────────────────────────────────────────────────────────────── */
+.gradient-text      { background: linear-gradient(135deg,#60a5fa,#818cf8); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.gradient-text-bull { background: linear-gradient(135deg,#00e676,#00bcd4); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.gradient-text-bear { background: linear-gradient(135deg,#ff1744,#ff6d00); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 
-/* ── Number badges ─────────────────────────────────────────────────────────── */
-.badge-buy {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: linear-gradient(135deg, rgba(0,210,100,0.15), rgba(0,160,76,0.1));
-  border: 1px solid rgba(0,210,100,0.35);
-  color: #00d264; padding: 2px 10px; border-radius: 999px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
-  box-shadow: 0 0 10px rgba(0,210,100,0.12);
-}
-.badge-sell {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: linear-gradient(135deg, rgba(255,61,90,0.15), rgba(200,30,60,0.1));
-  border: 1px solid rgba(255,61,90,0.35);
-  color: #ff3d5a; padding: 2px 10px; border-radius: 999px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
-  box-shadow: 0 0 10px rgba(255,61,90,0.12);
-}
-.badge-wait {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: rgba(240,165,0,0.1);
-  border: 1px solid rgba(240,165,0,0.3);
-  color: #f0a500; padding: 2px 10px; border-radius: 999px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
-}
+button:focus-visible { outline: 2px solid rgba(59,130,246,0.6); outline-offset: 2px; border-radius: 4px; }
 
-/* ── Focus ring fix ────────────────────────────────────────────────────────── */
-button:focus-visible { outline: 2px solid rgba(59, 130, 246, 0.5); outline-offset: 2px; }
-
-/* ── Glassmorphism header ──────────────────────────────────────────────────── */
-.glass-header {
-  background: rgba(8, 13, 26, 0.85);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(30, 45, 74, 0.8);
-}
+.ticker-tape { background: var(--surface); border-top: 1px solid var(--border); overflow: hidden; white-space: nowrap; }

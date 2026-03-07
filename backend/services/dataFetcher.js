@@ -21,6 +21,12 @@ const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 const { generateSignals } = require('../signals/signalEngine');
 const { computeVWAP, computePivotPoints, computeAllIndicators } = require('../utils/technicals');
 const { addSnapshot, getOIPattern, getTradeSetup } = require('../utils/oiTracker');
+const { computeGammaExposure } = require('../analytics/gammaExposure');
+const { detectLiquidityLevels } = require('../analytics/liquidityLevels');
+const { analyzeMarketStructure } = require('../analytics/marketStructure');
+const { computeOpeningRange } = require('../analytics/openingRange');
+const { fetchFIIDIIData } = require('../analytics/fiiDii');
+const { computeSignalScore } = require('../signals/scoringEngine');
 const {
   saveOptionChainSnapshot,
   savePriceSnapshot,
@@ -33,6 +39,12 @@ const { broadcastToClients } = require('./websocket');
 const cache = {
   optionChain: null,
   priceData: null,
+  gammaExposure: null,
+  liquidityLevels: null,
+  marketStructure: null,
+  openingRange: null,
+  fiiDii: null,
+  signalScore: null,
   giftNifty: null,
   signals: [],
   oiPattern: null,
@@ -694,6 +706,53 @@ async function fetchAndProcess() {
       if (cache.isMarketOpen) {
         signals.forEach(sig => { if (sig.isNew) saveSignal(sig); });
       }
+
+      // ── Extended Analytics (run every cycle) ──────────────────────────────
+      try {
+        // Gamma Exposure from option chain Greeks approximation
+        cache.gammaExposure = computeGammaExposure(cache.optionChain, spot);
+      } catch (e) { console.warn('[GEX] Failed:', e.message); }
+
+      try {
+        // Liquidity levels: previous day H/L from price data
+        const pdHigh = priceData.prevClose ? priceData.high  : null; // estimate from today's high
+        const pdLow  = priceData.prevClose ? priceData.low   : null;
+        // For real PDH/PDL we use prevClose as approximation when no explicit fields
+        cache.liquidityLevels = detectLiquidityLevels(
+          candles,
+          priceData.prevDayHigh ?? priceData.high,   // PDH (if available)
+          priceData.prevDayLow  ?? priceData.low,    // PDL (if available)
+          spot
+        );
+      } catch (e) { console.warn('[LIQ] Failed:', e.message); }
+
+      try {
+        cache.marketStructure = analyzeMarketStructure(candles, spot);
+      } catch (e) { console.warn('[MS] Failed:', e.message); }
+
+      try {
+        cache.openingRange = computeOpeningRange(candles, spot);
+      } catch (e) { console.warn('[OR] Failed:', e.message); }
+
+      // FII/DII — fetched with a low TTL (60 min), won't spam NSE
+      try {
+        cache.fiiDii = await fetchFIIDIIData(nseCookies);
+      } catch (e) { console.warn('[FII/DII] Fetch skipped:', e.message); }
+
+      // Signal Score — aggregates all analytics into a 0-100 probability
+      try {
+        cache.signalScore = computeSignalScore({
+          priceData:       cache.priceData,
+          optionChain:     cache.optionChain,
+          oiPattern:       cache.oiPattern,
+          technicals,
+          openingRange:    cache.openingRange,
+          marketStructure: cache.marketStructure,
+          liquidityLevels: cache.liquidityLevels,
+          gammaExposure:   cache.gammaExposure,
+          fiiDii:          cache.fiiDii,
+        });
+      } catch (e) { console.warn('[SCORE] Failed:', e.message); }
     }
 
     cache.lastFetch = new Date().toISOString();
@@ -709,6 +768,13 @@ async function fetchAndProcess() {
       signals: cache.signals,
       oiPattern: cache.oiPattern,
       tradeSetup: cache.tradeSetup,
+      // Extended analytics — new
+      gammaExposure:  cache.gammaExposure,
+      liquidityLevels: cache.liquidityLevels,
+      marketStructure: cache.marketStructure,
+      openingRange:   cache.openingRange,
+      fiiDii:         cache.fiiDii,
+      signalScore:    cache.signalScore,
     });
 
   } catch (err) {
