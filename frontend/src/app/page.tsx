@@ -120,15 +120,7 @@ export default function DashboardPage() {
       {!isLoading && (
         <main className="flex-1 px-3 lg:px-5 py-4 space-y-5">
 
-          {/* ① SIGNAL SCORE — Hero */}
-          <div className="animate-fade-in" style={{ animationDelay: '0ms' }}>
-            <div className="section-divider mb-3">
-              <span>⚡ Signal Engine</span>
-            </div>
-            <SignalScorePanel signalScore={signalScore ?? null} isMarketOpen={isMarketOpen} />
-          </div>
-
-          {/* ② CORE ANALYSIS */}
+ {/* ② CORE ANALYSIS */}
           <div className="animate-fade-in" style={{ animationDelay: '40ms' }}>
             <div className="section-divider mb-3">
               <span>📋 Core Analysis</span>
@@ -144,6 +136,15 @@ export default function DashboardPage() {
               <PriceOIAnalysis oiPattern={oiPattern ?? null} />
             </div>
           </div>
+          
+          {/* ① SIGNAL SCORE — Hero */}
+          <div className="animate-fade-in" style={{ animationDelay: '0ms' }}>
+            <div className="section-divider mb-3">
+              <span>⚡ Signal Engine</span>
+            </div>
+            <SignalScorePanel signalScore={signalScore ?? null} isMarketOpen={isMarketOpen} />
+          </div>
+
 
           {/* ③ MARKET CHART */}
           <div className="animate-fade-in" style={{ animationDelay: '80ms' }}>
