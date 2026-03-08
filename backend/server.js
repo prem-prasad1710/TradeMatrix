@@ -28,12 +28,30 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+const ALLOWED_ORIGINS = [
+  FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+
 // ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(morgan('dev'));
 app.use(cors({
-  origin: [FRONTEND_URL, 'http://localhost:3000'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, mobile apps, server-to-server)
+    if (!origin) return callback(null, true);
+    // Allow any Vercel deployment preview URL or production URL
+    if (
+      ALLOWED_ORIGINS.includes(origin) ||
+      /^https:\/\/.*\.vercel\.app$/.test(origin) ||
+      /^https:\/\/.*\.onrender\.com$/.test(origin)
+    ) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS blocked: ${origin}`));
+  },
   methods: ['GET', 'POST'],
   credentials: true,
 }));
