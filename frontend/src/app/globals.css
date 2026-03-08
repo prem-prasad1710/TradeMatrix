@@ -201,11 +201,29 @@ body::before {
 
   /* GLASSMORPHISM HEADER */
   .glass-header {
-    background: rgba(6,9,16,0.88);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-bottom: 1px solid rgba(24,32,54,0.95);
-    box-shadow: 0 1px 0 rgba(59,130,246,0.06), 0 4px 40px rgba(0,0,0,0.6);
+    background: rgba(6, 9, 16, 0.55);
+    backdrop-filter: blur(28px) saturate(200%) brightness(1.08);
+    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.08);
+    border-bottom: 1px solid rgba(59, 130, 246, 0.12);
+    box-shadow:
+      0 1px 0 rgba(59, 130, 246, 0.10),
+      0 4px 6px -1px rgba(0, 0, 0, 0.4),
+      0 12px 50px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    position: relative;
+  }
+  .glass-header::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(59, 130, 246, 0.04) 0%,
+      transparent 40%,
+      rgba(139, 92, 246, 0.03) 100%
+    );
+    pointer-events: none;
+    border-radius: inherit;
   }
 
   /* DATA TABLE */
