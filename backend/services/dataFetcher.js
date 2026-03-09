@@ -87,51 +87,125 @@ let consecutiveFailures = 0;
 let nseBackoffUntil = 0;         // Don't retry NSE until this timestamp
 const NSE_BACKOFF_MS = [0, 30000, 60000, 120000, 300000]; // 0s,30s,1m,2m,5m
 
+// NSE HTTP session — used when Chrome is not available (e.g. on Render)
+let nseCookies = '';
+let nseSessionExpiry = 0;
+
+async function refreshNSESessionHTTP() {
+  try {
+    const homeResp = await axios.get('https://www.nseindia.com/', {
+      httpsAgent, timeout: 15000, maxRedirects: 5,
+      headers: {
+        'User-Agent': BROWSER_UA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Fetch-Site': 'none', 'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Dest': 'document',
+      },
+    });
+    nseCookies = (homeResp.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
+    await new Promise(r => setTimeout(r, 1500));
+
+    const ocResp = await axios.get('https://www.nseindia.com/option-chain', {
+      httpsAgent, timeout: 15000, maxRedirects: 5,
+      headers: {
+        'User-Agent': BROWSER_UA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': 'https://www.nseindia.com/',
+        'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Dest': 'document', 'Cookie': nseCookies,
+      },
+    });
+    const moreCookies = (ocResp.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
+    if (moreCookies) nseCookies = `${nseCookies}; ${moreCookies}`;
+    nseSessionExpiry = Date.now() + 4 * 60 * 1000;
+    console.log('[NSE][HTTP] Session refreshed');
+    return true;
+  } catch (err) {
+    console.warn('[NSE][HTTP] Session refresh failed:', err.message);
+    return false;
+  }
+}
+
 // ── Data Fetching Functions ───────────────────────────────────────────────────
 
 /**
- * Fetch NIFTY option chain via a real headless browser (bypasses Akamai).
- * Uses nseSession.getOptionChain() which launches Chrome, warms up the
- * session, and fetches the data from within the browser context.
- * Implements exponential backoff when the browser fetch fails.
+ * Fetch NIFTY option chain.
+ * On machines with Chrome: uses Puppeteer stealth browser (bypasses Akamai).
+ * On machines without Chrome (e.g. Render): falls back to HTTP warm-up + axios.
+ * Implements exponential backoff on repeated failures.
  */
 async function fetchNSEOptionChain() {
-  // Honour backoff — don't spawn Chrome repeatedly when something is wrong
   if (Date.now() < nseBackoffUntil) {
     const remainS = Math.ceil((nseBackoffUntil - Date.now()) / 1000);
     throw new Error(`NSE backoff active (${remainS}s remaining)`);
   }
 
   try {
-    const data = await nseSession.getOptionChain();
+    let data;
+    if (nseSession.CHROME_AVAILABLE !== false) {
+      // Try browser-based approach first (works locally)
+      try {
+        data = await nseSession.getOptionChain();
+      } catch (browserErr) {
+        if (!browserErr.message.includes('cooldown') && !browserErr.message.includes('in progress')) {
+          console.warn('[OC] Browser fetch failed, trying HTTP fallback:', browserErr.message);
+        }
+        // Fall through to HTTP approach
+        data = null;
+      }
+    }
 
-    if (!data || !data.records) {
-      throw new Error('NSE browser fetch returned invalid data');
+    // HTTP fallback — works on clean IPs (cloud servers, fresh installs)
+    if (!data) {
+      if (!nseCookies || Date.now() > nseSessionExpiry) await refreshNSESessionHTTP();
+      const response = await axios.get(
+        'https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY',
+        { httpsAgent, timeout: 12000, headers: { ...NSE_API_HEADERS, 'Cookie': nseCookies } }
+      );
+      data = response.data;
+    }
+
+    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+      // Akamai returned {} — force session refresh
+      nseCookies = ''; nseSessionExpiry = 0;
+      throw new Error('NSE returned empty response (Akamai block)');
+    }
+    if (!data.records) {
+      throw new Error(`Unexpected NSE response keys: ${Object.keys(data).join(',')}`);
     }
 
     consecutiveFailures = 0;
     nseBackoffUntil = 0;
     return data;
   } catch (err) {
-    if (!err.message.includes('backoff') && !err.message.includes('in progress') && !err.message.includes('cooldown')) {
+    if (!err.message.includes('backoff') && !err.message.includes('cooldown') && !err.message.includes('in progress')) {
       consecutiveFailures++;
       const backoffIdx = Math.min(consecutiveFailures, NSE_BACKOFF_MS.length - 1);
       nseBackoffUntil = Date.now() + NSE_BACKOFF_MS[backoffIdx];
-      console.error(`[OC] Browser fetch failed (${consecutiveFailures}x) — backoff ${NSE_BACKOFF_MS[backoffIdx] / 1000}s`);
+      if (!err.message.includes('Akamai')) {
+        console.error(`[OC] Fetch failed (${consecutiveFailures}x) — backoff ${NSE_BACKOFF_MS[backoffIdx] / 1000}s`);
+      }
     }
     throw err;
   }
 }
 
 /**
- * Fetch NIFTY spot price from Yahoo Finance.
- * Tries query1 first, then query2 as fallback.
+ * Fetch NIFTY spot price.
+ * Source priority (first success wins):
+ *   1. Yahoo Finance query1 / query2 (fast, 5-min candles)
+ *   2. Stooq.com (free, works from cloud IPs, no auth)
+ *   3. Last cached price (staleness OK — prevents blank dashboard)
  */
 async function fetchNiftyPrice() {
+  // ── Source 1: Yahoo Finance ───────────────────────────────────────────────
   const YAHOO_HEADERS = {
     'User-Agent': BROWSER_UA,
     'Accept': 'application/json',
     'Accept-Language': 'en-US,en;q=0.9',
+    'Origin': 'https://finance.yahoo.com',
+    'Referer': 'https://finance.yahoo.com/',
   };
 
   const tryYahoo = async (host) => {
@@ -140,9 +214,46 @@ async function fetchNiftyPrice() {
       headers: YAHOO_HEADERS,
       params: { interval: '5m', range: '1d', includePrePost: false },
       httpsAgent,
-      timeout: 5000, // reduced from 10s so 3s cron doesn't pile up
+      timeout: 6000,
     });
     return response;
+  };
+
+  // ── Source 2: Stooq.com ───────────────────────────────────────────────────
+  // Free financial data provider — not blocked by cloud provider IPs
+  const tryStooq = async () => {
+    const url = 'https://stooq.com/q/l/?s=%5Ensei&f=sd2t2ohlcv&h&e=json';
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': BROWSER_UA, 'Accept': 'application/json' },
+      httpsAgent,
+      timeout: 8000,
+    });
+    const sym = response.data?.symbols?.[0];
+    if (!sym || !sym.close) throw new Error('Stooq: no data');
+    const price = parseFloat(sym.close);
+    const open  = parseFloat(sym.open)  || price;
+    const high  = parseFloat(sym.high)  || price;
+    const low   = parseFloat(sym.low)   || price;
+    const prevClose = cache.priceData?.prevClose || price;
+    const pivots = computePivotPoints(high, low, prevClose);
+    const now = Date.now();
+    // Build minimal candle list using known OHLC
+    const existingCandles = (cache.priceData?.candles || []).slice(-77);
+    const newCandle = { time: now, open, high, low, close: price, volume: 0 };
+    const candles = [...existingCandles, newCandle];
+    const vwap = computeVWAP(
+      candles.map(c => c.time / 1000),
+      { open: candles.map(c => c.open), high: candles.map(c => c.high),
+        low: candles.map(c => c.low),   close: candles.map(c => c.close),
+        volume: candles.map(c => c.volume || 0) }
+    );
+    console.log(`[Stooq] Price fetched: ₹${price}`);
+    return {
+      symbol: '^NSEI', price, open, high, low, prevClose, vwap, pivots, candles,
+      change: price - prevClose,
+      changePct: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
+      timestamp: now,
+    };
   };
 
   try {
@@ -150,7 +261,13 @@ async function fetchNiftyPrice() {
     try {
       response = await tryYahoo('query1.finance.yahoo.com');
     } catch (_) {
-      response = await tryYahoo('query2.finance.yahoo.com');
+      try {
+        response = await tryYahoo('query2.finance.yahoo.com');
+      } catch (__) {
+        // Yahoo Finance blocked from this IP — try Stooq
+        console.warn('[Yahoo] Both endpoints failed — trying Stooq...');
+        return await tryStooq();
+      }
     }
 
     const chart = response.data?.chart?.result?.[0];
@@ -198,7 +315,12 @@ async function fetchNiftyPrice() {
     };
   } catch (err) {
     console.error('[Yahoo] Price fetch error:', err.message);
+    // Stooq fallback
+    try { return await tryStooq(); } catch (stooqErr) {
+      console.error('[Stooq] Price fetch error:', stooqErr.message);
+    }
     // Return last known price or a mock so dashboard is not blank
+    if (cache.priceData && !cache.priceData.isMock) return { ...cache.priceData, timestamp: Date.now() };
     if (cache.priceData) return cache.priceData;
 
     // Generate mock price data
@@ -232,7 +354,7 @@ async function fetchNiftyPrice() {
 }
 
 /**
- * Fetch GIFT NIFTY proxy from Yahoo Finance (1-min for fresher price)
+ * Fetch GIFT NIFTY proxy — Yahoo Finance with Stooq fallback.
  */
 async function fetchGiftNifty() {
   try {
@@ -241,14 +363,16 @@ async function fetchGiftNifty() {
       headers: {
         'User-Agent': BROWSER_UA,
         'Accept': 'application/json',
+        'Origin': 'https://finance.yahoo.com',
+        'Referer': 'https://finance.yahoo.com/',
       },
       params: { interval: '1m', range: '1d' },
       httpsAgent,
-      timeout: 8000,
+      timeout: 6000,
     });
 
     const meta = response.data?.chart?.result?.[0]?.meta;
-    if (!meta) return null;
+    if (!meta) throw new Error('Yahoo: no meta');
 
     return {
       price: meta.regularMarketPrice,
@@ -257,8 +381,28 @@ async function fetchGiftNifty() {
       changePct: meta.regularMarketChangePercent || 0,
       direction: meta.regularMarketPrice >= (meta.chartPreviousClose || meta.regularMarketPrice) ? 'UP' : 'DOWN',
     };
-  } catch (err) {
-    return null;
+  } catch (_yahooErr) {
+    // Stooq fallback for deployment environments where Yahoo is blocked
+    try {
+      const resp = await axios.get('https://stooq.com/q/l/?s=%5Ensei&f=sd2t2ohlcv&h&e=json', {
+        headers: { 'User-Agent': BROWSER_UA },
+        httpsAgent,
+        timeout: 8000,
+      });
+      const sym = resp.data?.symbols?.[0];
+      if (!sym?.close) return null;
+      const price = parseFloat(sym.close);
+      const prevClose = cache.priceData?.prevClose || price;
+      return {
+        price,
+        prevClose,
+        change: price - prevClose,
+        changePct: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
+        direction: price >= prevClose ? 'UP' : 'DOWN',
+      };
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -601,7 +745,7 @@ async function fetchAndProcess() {
 
       // FII/DII — fetched with a low TTL (60 min), won't spam NSE
       try {
-        cache.fiiDii = await fetchFIIDIIData(nseSession.getCookieString());
+        cache.fiiDii = await fetchFIIDIIData(nseCookies || nseSession.getCookieString());
       } catch (e) { console.warn('[FII/DII] Fetch skipped:', e.message); }
 
       // Signal Score — aggregates all analytics into a 0-100 probability
@@ -684,6 +828,14 @@ function startDataFetcher() {
   };
   cache.prevPrice = mockSpot;
   console.log('[FETCHER] Mock data seeded — dashboard is live');
+
+  // On servers without Chrome, warm up the NSE HTTP session at startup
+  if (!nseSession.CHROME_AVAILABLE) {
+    console.log('[FETCHER] Chrome not found — using HTTP-only mode for NSE');
+    refreshNSESessionHTTP().catch(() => {});
+    // Re-warm every 4 minutes
+    cron.schedule('*/4 * * * *', () => refreshNSESessionHTTP().catch(() => {}));
+  }
 
   // Start the price + analytics fetch loop immediately
   fetchAndProcess();

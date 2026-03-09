@@ -10,11 +10,15 @@
 
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const fs = require('fs');
 puppeteer.use(StealthPlugin());
 
 const CHROME_PATH =
   process.env.CHROME_PATH ||
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+
+// If Chrome is not installed, skip the browser approach entirely
+const CHROME_AVAILABLE = fs.existsSync(CHROME_PATH);
 
 const OC_API = 'https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY';
 
@@ -31,6 +35,9 @@ let nextBrowserAllowed = 0;
  * Returns the raw parsed JSON or throws on failure.
  */
 async function fetchOptionChainViaBrowser() {
+  if (!CHROME_AVAILABLE) {
+    throw new Error('Chrome not available on this server — skipping browser fetch');
+  }
   if (fetching) {
     await new Promise(r => setTimeout(r, 500));
     if (cachedData) return cachedData;
@@ -42,7 +49,8 @@ async function fetchOptionChainViaBrowser() {
     throw new Error(`NSE browser cooldown (${waitS}s remaining)`);
   }
   fetching = true;
-  nextBrowserAllowed = Date.now() + 5 * 60 * 1000; // next attempt in 5 min
+  nextBrowserAllowed = Date.now() + 5 * 60 * 1000;
+  console.log(`[NSE][Browser] Launching Chrome at ${CHROME_PATH}...`);
 
   let browser;
   try {
@@ -150,4 +158,4 @@ async function refreshNSESession() { return true; }
 async function ensureSession() {}
 function getCookieString() { return ''; }
 
-module.exports = { refreshNSESession, ensureSession, getCookieString, getOptionChain };
+module.exports = { refreshNSESession, ensureSession, getCookieString, getOptionChain, CHROME_AVAILABLE };
