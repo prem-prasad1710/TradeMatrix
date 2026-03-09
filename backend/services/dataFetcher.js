@@ -219,25 +219,27 @@ async function fetchNiftyPrice() {
     return response;
   };
 
-  // ── Source 2: Stooq.com ───────────────────────────────────────────────────
-  // Free financial data provider — not blocked by cloud provider IPs
-  const tryStooq = async () => {
-    const url = 'https://stooq.com/q/l/?s=%5Ensei&f=sd2t2ohlcv&h&e=json';
-    const response = await axios.get(url, {
-      headers: { 'User-Agent': BROWSER_UA, 'Accept': 'application/json' },
+  // ── Source 2: NSE allIndices ────────────────────────────────────────────
+  // NSE's own indices API — no session cookie needed, works from cloud IPs
+  const tryNSEAllIndices = async () => {
+    const response = await axios.get('https://www.nseindia.com/api/allIndices', {
+      headers: {
+        'User-Agent': BROWSER_UA,
+        'Accept': 'application/json',
+        'Referer': 'https://www.nseindia.com/',
+      },
       httpsAgent,
       timeout: 8000,
     });
-    const sym = response.data?.symbols?.[0];
-    if (!sym || !sym.close) throw new Error('Stooq: no data');
-    const price = parseFloat(sym.close);
-    const open  = parseFloat(sym.open)  || price;
-    const high  = parseFloat(sym.high)  || price;
-    const low   = parseFloat(sym.low)   || price;
-    const prevClose = cache.priceData?.prevClose || price;
+    const idx = (response.data?.data || []).find(x => x.index === 'NIFTY 50');
+    if (!idx || !idx.last) throw new Error('NSE allIndices: no NIFTY 50 data');
+    const price    = parseFloat(idx.last);
+    const open     = parseFloat(idx.open)          || price;
+    const high     = parseFloat(idx.high)          || price;
+    const low      = parseFloat(idx.low)           || price;
+    const prevClose = parseFloat(idx.previousClose) || price;
     const pivots = computePivotPoints(high, low, prevClose);
     const now = Date.now();
-    // Build minimal candle list using known OHLC
     const existingCandles = (cache.priceData?.candles || []).slice(-77);
     const newCandle = { time: now, open, high, low, close: price, volume: 0 };
     const candles = [...existingCandles, newCandle];
@@ -247,7 +249,7 @@ async function fetchNiftyPrice() {
         low: candles.map(c => c.low),   close: candles.map(c => c.close),
         volume: candles.map(c => c.volume || 0) }
     );
-    console.log(`[Stooq] Price fetched: ₹${price}`);
+    console.log(`[NSE allIndices] Price fetched: ₹${price}`);
     return {
       symbol: '^NSEI', price, open, high, low, prevClose, vwap, pivots, candles,
       change: price - prevClose,
@@ -264,9 +266,9 @@ async function fetchNiftyPrice() {
       try {
         response = await tryYahoo('query2.finance.yahoo.com');
       } catch (__) {
-        // Yahoo Finance blocked from this IP — try Stooq
-        console.warn('[Yahoo] Both endpoints failed — trying Stooq...');
-        return await tryStooq();
+        // Yahoo Finance blocked from this IP — try NSE allIndices
+        console.warn('[Yahoo] Both endpoints failed — trying NSE allIndices...');
+        return await tryNSEAllIndices();
       }
     }
 
@@ -315,9 +317,9 @@ async function fetchNiftyPrice() {
     };
   } catch (err) {
     console.error('[Yahoo] Price fetch error:', err.message);
-    // Stooq fallback
-    try { return await tryStooq(); } catch (stooqErr) {
-      console.error('[Stooq] Price fetch error:', stooqErr.message);
+    // NSE allIndices fallback
+    try { return await tryNSEAllIndices(); } catch (nseErr) {
+      console.error('[NSE allIndices] Price fetch error:', nseErr.message);
     }
     // Return last known price or a mock so dashboard is not blank
     if (cache.priceData && !cache.priceData.isMock) return { ...cache.priceData, timestamp: Date.now() };
@@ -354,7 +356,7 @@ async function fetchNiftyPrice() {
 }
 
 /**
- * Fetch GIFT NIFTY proxy — Yahoo Finance with Stooq fallback.
+ * Fetch GIFT NIFTY proxy — Yahoo Finance with NSE allIndices fallback.
  */
 async function fetchGiftNifty() {
   try {
@@ -382,17 +384,17 @@ async function fetchGiftNifty() {
       direction: meta.regularMarketPrice >= (meta.chartPreviousClose || meta.regularMarketPrice) ? 'UP' : 'DOWN',
     };
   } catch (_yahooErr) {
-    // Stooq fallback for deployment environments where Yahoo is blocked
+    // NSE allIndices fallback — works from cloud IPs without session cookies
     try {
-      const resp = await axios.get('https://stooq.com/q/l/?s=%5Ensei&f=sd2t2ohlcv&h&e=json', {
-        headers: { 'User-Agent': BROWSER_UA },
+      const resp = await axios.get('https://www.nseindia.com/api/allIndices', {
+        headers: { 'User-Agent': BROWSER_UA, 'Accept': 'application/json', 'Referer': 'https://www.nseindia.com/' },
         httpsAgent,
         timeout: 8000,
       });
-      const sym = resp.data?.symbols?.[0];
-      if (!sym?.close) return null;
-      const price = parseFloat(sym.close);
-      const prevClose = cache.priceData?.prevClose || price;
+      const idx = (resp.data?.data || []).find(x => x.index === 'NIFTY 50');
+      if (!idx?.last) return null;
+      const price = parseFloat(idx.last);
+      const prevClose = parseFloat(idx.previousClose) || cache.priceData?.prevClose || price;
       return {
         price,
         prevClose,
