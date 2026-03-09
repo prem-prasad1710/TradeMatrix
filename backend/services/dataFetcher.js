@@ -2,10 +2,8 @@
  * NSE Data Fetcher Service
  *
  * Fetches NIFTY option chain from NSE India API every 10 seconds.
- * NSE uses Akamai bot protection — proper warm-up sequence required:
- *   1. Visit nseindia.com homepage  → get AKA_A2, _abck, bm_sz cookies
- *   2. Visit /option-chain page     → get nsit, nseappid session cookies
- *   3. Hit the API endpoint         → now allowed
+ * NSE uses Akamai bot protection — session is now warmed up via a real
+ * headless Chrome browser (puppeteer-core) so the JS challenge is solved.
  *
  * Also fetches NIFTY spot price from Yahoo Finance.
  */
@@ -17,6 +15,9 @@ const { parseOptionChain, computeOIAnalysis } = require('../utils/oiParser');
 
 // ── SSL Fix for macOS / corporate proxies ────────────────────────────────────
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
+// ── Puppeteer-backed NSE session (solves Akamai JS challenge) ─────────────────
+const nseSession = require('./nseSession');
 
 const { generateSignals } = require('../signals/signalEngine');
 const { computeVWAP, computePivotPoints, computeAllIndicators } = require('../utils/technicals');
@@ -82,177 +83,41 @@ const NSE_API_HEADERS = {
 };
 
 // Session state
-let nseCookies = '';
-let nseSessionExpiry = 0;
-let sessionRefreshing = false;
 let consecutiveFailures = 0;
 let nseBackoffUntil = 0;         // Don't retry NSE until this timestamp
 const NSE_BACKOFF_MS = [0, 30000, 60000, 120000, 300000]; // 0s,30s,1m,2m,5m
 
-// ── Cookie utilities ───────────────────────────────────────────────────────────
-
-/**
- * Parse Set-Cookie headers into a flat cookie string, merging with existing.
- */
-function mergeCookies(existing, setCookieHeaders) {
-  const map = new Map();
-  // Parse existing
-  (existing || '').split(';').forEach(p => {
-    const [k, ...v] = p.trim().split('=');
-    if (k) map.set(k.trim(), v.join('=').trim());
-  });
-  // Merge new cookies
-  (setCookieHeaders || []).forEach(header => {
-    const raw = header.split(';')[0].trim();
-    const eqIdx = raw.indexOf('=');
-    if (eqIdx > 0) {
-      const k = raw.substring(0, eqIdx).trim();
-      const v = raw.substring(eqIdx + 1).trim();
-      if (k) map.set(k, v);
-    }
-  });
-  return [...map.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
-}
-
-// ── NSE Session Management ─────────────────────────────────────────────────────
-
-/**
- * Full Akamai-aware warm-up:
- *   Step 1: GET nseindia.com/ → collect AKA_A2, _abck, bm_sz
- *   Step 2: GET nseindia.com/option-chain → collect nsit, nseappid
- * After these two requests the API accepts AJAX calls.
- */
-async function refreshNSESession() {
-  if (sessionRefreshing) return false;
-  sessionRefreshing = true;
-  try {
-    // ── Step 1: Homepage ─────────────────────────────────────────────────────
-    const homeResp = await axios.get('https://www.nseindia.com/', {
-      httpsAgent,
-      timeout: 15000,
-      maxRedirects: 5,
-      headers: {
-        'User-Agent': BROWSER_UA,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'sec-ch-ua': NSE_API_HEADERS['sec-ch-ua'],
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"macOS"',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-User': '?1',
-        'Sec-Fetch-Dest': 'document',
-      },
-    });
-    nseCookies = mergeCookies('', homeResp.headers['set-cookie']);
-
-    // Short delay — simulate browser rendering time
-    await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
-
-    // ── Step 2: Option chain page ─────────────────────────────────────────────
-    const ocPageResp = await axios.get('https://www.nseindia.com/option-chain', {
-      httpsAgent,
-      timeout: 15000,
-      maxRedirects: 5,
-      headers: {
-        'User-Agent': BROWSER_UA,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Referer': 'https://www.nseindia.com/',
-        'sec-ch-ua': NSE_API_HEADERS['sec-ch-ua'],
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"macOS"',
-        'Sec-Fetch-Site': 'same-origin',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-User': '?1',
-        'Sec-Fetch-Dest': 'document',
-        'Cookie': nseCookies,
-      },
-    });
-    nseCookies = mergeCookies(nseCookies, ocPageResp.headers['set-cookie']);
-
-    nseSessionExpiry = Date.now() + 4.5 * 60 * 1000;
-    consecutiveFailures = 0;
-    console.log('[NSE] Session warm-up complete. Cookies:', nseCookies.slice(0, 100) + '...');
-    return true;
-  } catch (err) {
-    console.error('[NSE] Session warm-up failed:', err.message);
-    return false;
-  } finally {
-    sessionRefreshing = false;
-  }
-}
-
-async function ensureNSESession() {
-  if (!nseCookies || Date.now() > nseSessionExpiry) {
-    await refreshNSESession();
-  }
-}
-
 // ── Data Fetching Functions ───────────────────────────────────────────────────
 
 /**
- * Fetch NIFTY option chain from NSE.
- * Validates response has records.data array before returning.
- * Implements exponential backoff when NSE blocks us.
+ * Fetch NIFTY option chain via a real headless browser (bypasses Akamai).
+ * Uses nseSession.getOptionChain() which launches Chrome, warms up the
+ * session, and fetches the data from within the browser context.
+ * Implements exponential backoff when the browser fetch fails.
  */
 async function fetchNSEOptionChain() {
-  // Honour backoff — don't hammer NSE when it's blocking us
+  // Honour backoff — don't spawn Chrome repeatedly when something is wrong
   if (Date.now() < nseBackoffUntil) {
     const remainS = Math.ceil((nseBackoffUntil - Date.now()) / 1000);
     throw new Error(`NSE backoff active (${remainS}s remaining)`);
   }
 
-  await ensureNSESession();
-
-  const url = 'https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY';
-
-  const doFetch = () => axios.get(url, {
-    httpsAgent,
-    timeout: 12000,
-    headers: { ...NSE_API_HEADERS, 'Cookie': nseCookies },
-  });
-
   try {
-    const response = await doFetch();
+    const data = await nseSession.getOptionChain();
 
-    // NSE sometimes returns {} or an HTML page (bot block)
-    const data = response.data;
-    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
-      consecutiveFailures++;
-      // Apply backoff — don't re-warm every 10 seconds
-      const backoffIdx = Math.min(consecutiveFailures, NSE_BACKOFF_MS.length - 1);
-      nseBackoffUntil = Date.now() + NSE_BACKOFF_MS[backoffIdx];
-      // Force session refresh after backoff period
-      nseCookies = '';
-      nseSessionExpiry = 0;
-      throw new Error(`NSE returned empty object (Akamai block) — backoff ${NSE_BACKOFF_MS[backoffIdx] / 1000}s`);
-    }
-
-    if (!data.records) {
-      throw new Error(`Unexpected NSE response keys: ${Object.keys(data).join(',')}`);
+    if (!data || !data.records) {
+      throw new Error('NSE browser fetch returned invalid data');
     }
 
     consecutiveFailures = 0;
     nseBackoffUntil = 0;
     return data;
   } catch (err) {
-    if (!err.message.includes('backoff')) {
+    if (!err.message.includes('backoff') && !err.message.includes('in progress') && !err.message.includes('cooldown')) {
       consecutiveFailures++;
       const backoffIdx = Math.min(consecutiveFailures, NSE_BACKOFF_MS.length - 1);
       nseBackoffUntil = Date.now() + NSE_BACKOFF_MS[backoffIdx];
-    }
-    // On repeated 401/403, force session refresh after backoff
-    if (err.response?.status === 401 || err.response?.status === 403) {
-      console.log('[NSE] Auth error — will refresh session after backoff');
-      nseCookies = '';
-      nseSessionExpiry = 0;
+      console.error(`[OC] Browser fetch failed (${consecutiveFailures}x) — backoff ${NSE_BACKOFF_MS[backoffIdx] / 1000}s`);
     }
     throw err;
   }
@@ -736,7 +601,7 @@ async function fetchAndProcess() {
 
       // FII/DII — fetched with a low TTL (60 min), won't spam NSE
       try {
-        cache.fiiDii = await fetchFIIDIIData(nseCookies);
+        cache.fiiDii = await fetchFIIDIIData(nseSession.getCookieString());
       } catch (e) { console.warn('[FII/DII] Fetch skipped:', e.message); }
 
       // Signal Score — aggregates all analytics into a 0-100 probability
@@ -820,21 +685,14 @@ function startDataFetcher() {
   cache.prevPrice = mockSpot;
   console.log('[FETCHER] Mock data seeded — dashboard is live');
 
-  // Try real data after a short delay (don't block startup)
-  setTimeout(() => {
-    refreshNSESession().then(() => fetchAndProcess());
-  }, 500);
+  // Start the price + analytics fetch loop immediately
+  fetchAndProcess();
 
   // Fetch every 3 seconds
   cron.schedule('*/3 * * * * *', fetchAndProcess);
 
   // Cleanup DB daily at midnight
   cron.schedule('0 0 * * *', cleanupOldData);
-
-  // Refresh NSE session every 4 minutes (only if not in backoff)
-  cron.schedule('*/4 * * * *', () => {
-    if (Date.now() >= nseBackoffUntil) refreshNSESession();
-  });
 }
 
 /**
